@@ -1,5 +1,47 @@
 import { Mecanico, Vehiculo, HistorialRow } from "./types";
 
+// Configuración dinámica de Puntos y Reglas de Score
+export interface ScoreConfig {
+  puntosBaseFirma: number;        // Puntos base por firma registrada
+  puntosAceite: number;           // Puntos por cambio de aceite/filtro
+  puntosFrenos: number;           // Puntos por frenos/pastillas/discos
+  puntosCorrea: number;           // Puntos por correa de distribución/tiempo
+  puntosSuspension: number;       // Puntos por suspensión/amortiguador/cauchos
+  puntosGeneral: number;          // Puntos por escáner/revisión general
+  penalizacionRetraso6m: number;   // Penalización por 6-12 meses sin firmar
+  penalizacionVencido12m: number;  // Penalización por >12 meses sin firmar
+  penalizacionSinHistorial: number; // Penalización por sin historial
+}
+
+export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
+  puntosBaseFirma: 10,
+  puntosAceite: 15,
+  puntosFrenos: 15,
+  puntosCorrea: 25,
+  puntosSuspension: 10,
+  puntosGeneral: 10,
+  penalizacionRetraso6m: 10,
+  penalizacionVencido12m: 25,
+  penalizacionSinHistorial: 20
+};
+
+export function getScoreConfig(): ScoreConfig {
+  if (typeof window === "undefined") return DEFAULT_SCORE_CONFIG;
+  const saved = localStorage.getItem("autoscore_score_config");
+  if (!saved) return DEFAULT_SCORE_CONFIG;
+  try {
+    return { ...DEFAULT_SCORE_CONFIG, ...JSON.parse(saved) };
+  } catch {
+    return DEFAULT_SCORE_CONFIG;
+  }
+}
+
+export function saveScoreConfig(config: ScoreConfig) {
+  if (typeof window !== "undefined") {
+    localStorage.setItem("autoscore_score_config", JSON.stringify(config));
+  }
+}
+
 // Tipos adicionales para el flujo de login y base de datos local completa
 export interface UsuarioPropietario {
   idDueno: string;
@@ -510,23 +552,24 @@ export function simularPostMantenimiento(payload: {
   data.historial.push(nuevoHistorial);
 
   // 4. Analizar semánticamente la descripción del trabajo para incrementar el score
+  const scoreConfig = getScoreConfig();
   const workLower = trabajo.toLowerCase();
-  let puntosGanados = 10; // Incremento base por firma de taller autorizado
+  let puntosGanados = scoreConfig.puntosBaseFirma; // Incremento base por firma de taller autorizado
 
   if (workLower.includes("aceite") || workLower.includes("filtro") || workLower.includes("lubricante") || workLower.includes("bujia") || workLower.includes("bujía")) {
-    puntosGanados += 15; // +25 pts por mantenimiento de motor/aceite
+    puntosGanados += scoreConfig.puntosAceite; // Puntos por mantenimiento de motor/aceite
   }
   if (workLower.includes("freno") || workLower.includes("frenos") || workLower.includes("pastilla") || workLower.includes("disco") || workLower.includes("pastillas")) {
-    puntosGanados += 15; // +25 pts por mantenimiento de frenos
+    puntosGanados += scoreConfig.puntosFrenos; // Puntos por mantenimiento de frenos
   }
   if (workLower.includes("correa") || workLower.includes("distribucion") || workLower.includes("distribución") || workLower.includes("tiempo") || workLower.includes("cadena")) {
-    puntosGanados += 25; // +35 pts por kit de distribución/tiempo
+    puntosGanados += scoreConfig.puntosCorrea; // Puntos por kit de distribución/tiempo
   }
   if (workLower.includes("suspension") || workLower.includes("suspensión") || workLower.includes("amortiguador") || workLower.includes("caucho") || workLower.includes("llanta") || workLower.includes("tren")) {
-    puntosGanados += 10; // +20 pts por suspensión/cauchos
+    puntosGanados += scoreConfig.puntosSuspension; // Puntos por suspensión/cauchos
   }
   if (workLower.includes("general") || workLower.includes("escaner") || workLower.includes("escáner") || workLower.includes("revision") || workLower.includes("revisión") || workLower.includes("mantenimiento")) {
-    puntosGanados += 10; // +20 pts por revisión diagnóstica integral
+    puntosGanados += scoreConfig.puntosGeneral; // Puntos por revisión diagnóstica integral
   }
 
   const scorePrevio = data.vehiculos[vehiculoIndex].score || 70;

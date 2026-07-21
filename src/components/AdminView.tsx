@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { 
   Lock, Shield, Users, Car, PenTool, BarChart3, CheckCircle2, XCircle, AlertCircle, 
-  RefreshCw, UserCheck, Key, Plus, Phone, Hammer, HelpCircle, ArrowRight
+  RefreshCw, UserCheck, Key, Plus, Phone, Hammer, HelpCircle, ArrowRight,
+  Sliders, Settings, Gauge, Save, RotateCcw, Sparkles
 } from "lucide-react";
-import { getSimulatedData, simularAdminUpdate } from "../mockData";
+import { 
+  getSimulatedData, simularAdminUpdate, 
+  getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig 
+} from "../mockData";
 
 interface AdminViewProps {
   useSimulado: boolean;
@@ -25,6 +29,10 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   const [mecanicos, setMecanicos] = useState<any[]>([]);
   const [historial, setHistorial] = useState<any[]>([]);
 
+  // Configuración del Algoritmo de Score
+  const [scoreConfigState, setScoreConfigState] = useState<ScoreConfig>(getScoreConfig());
+  const [configSuccessMsg, setConfigSuccessMsg] = useState<string | null>(null);
+
   // Estados de formularios internos
   const [newMecCodigo, setNewMecCodigo] = useState("");
   const [newMecNombre, setNewMecNombre] = useState("");
@@ -35,7 +43,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   const [isSubmittingMec, setIsSubmittingMec] = useState(false);
 
   // Tab seleccionada
-  const [activeAdminTab, setActiveAdminTab] = useState<"dashboard" | "usuarios" | "vehiculos" | "mecanicos">("dashboard");
+  const [activeAdminTab, setActiveAdminTab] = useState<"dashboard" | "usuarios" | "vehiculos" | "mecanicos" | "ajustes">("dashboard");
 
   // Manejar Login del Admin
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -258,7 +266,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
       </div>
 
       {/* Navegación Interna Consola */}
-      <div className="grid grid-cols-4 bg-slate-950 border border-white/5 p-1 rounded-xl gap-1">
+      <div className="grid grid-cols-5 bg-slate-950 border border-white/5 p-1 rounded-xl gap-1">
         <button
           onClick={() => setActiveAdminTab("dashboard")}
           className={`py-2 text-[10px] font-bold rounded-lg transition-colors ${
@@ -295,6 +303,14 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
           }`}
         >
           Talleres
+        </button>
+        <button
+          onClick={() => setActiveAdminTab("ajustes")}
+          className={`py-2 text-[10px] font-bold rounded-lg transition-colors flex items-center justify-center gap-1 ${
+            activeAdminTab === "ajustes" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          <span>Ajustes</span>
         </button>
       </div>
 
@@ -618,6 +634,242 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SECCIÓN AJUSTES DEL ALGORITMO DE PUNTOS */}
+      {!loading && activeAdminTab === "ajustes" && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900/60 border border-white/10 p-4 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-amber-500" />
+                <h4 className="text-xs font-bold text-white uppercase font-display tracking-wider">
+                  Configuración del Algoritmo de Score
+                </h4>
+              </div>
+              <span className="text-[9px] bg-amber-500/10 text-amber-400 font-mono font-bold px-2 py-0.5 rounded border border-amber-500/20">
+                Sin Apps Script
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-400 leading-normal">
+              Ajusta los puntos que suma cada tipo de mantenimiento o reparación, así como las deducciones automáticas por tiempo. Se aplican de forma inmediata en toda la plataforma.
+            </p>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              saveScoreConfig(scoreConfigState);
+              setConfigSuccessMsg("¡Parámetros del algoritmo actualizados con éxito!");
+              setTimeout(() => setConfigSuccessMsg(null), 3000);
+            }} className="space-y-3.5 pt-1">
+
+              {/* Bonos de Puntos por Mantenimiento */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest block">
+                  1. Puntos Otorgados por Firma Técnica
+                </span>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Firma Base Taller:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosBaseFirma}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosBaseFirma: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Aceite y Filtros:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosAceite}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosAceite: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Frenos y Discos:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosFrenos}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosFrenos: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Correa Distribución:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosCorrea}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosCorrea: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Suspensión / Cauchos:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosSuspension}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosSuspension: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[10px] font-semibold text-slate-300 mb-1">
+                      Escáner / Revisión:
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.puntosGeneral}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, puntosGeneral: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deducciones / Penalizaciones */}
+              <div className="space-y-2 pt-2 border-t border-white/5">
+                <span className="text-[10px] font-bold text-red-400 uppercase tracking-widest block">
+                  2. Deducciones por Inactividad (Penalizaciones)
+                </span>
+
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[9px] font-semibold text-slate-300 mb-1">
+                      6 a 12 meses:
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.penalizacionRetraso6m}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, penalizacionRetraso6m: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-red-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[9px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[9px] font-semibold text-slate-300 mb-1">
+                      &gt; 12 meses:
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.penalizacionVencido12m}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, penalizacionVencido12m: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-red-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[9px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+                    <label className="block text-[9px] font-semibold text-slate-300 mb-1">
+                      Sin Historial:
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={scoreConfigState.penalizacionSinHistorial}
+                        onChange={(e) => setScoreConfigState({ ...scoreConfigState, penalizacionSinHistorial: Number(e.target.value) })}
+                        className="w-full glass-input rounded-lg px-2 py-1 text-xs font-mono text-amber-400 font-bold focus:outline-none"
+                      />
+                      <span className="text-[9px] text-slate-500 font-mono">pts</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {configSuccessMsg && (
+                <div className="p-2.5 bg-emerald-950/30 border border-emerald-500/30 text-emerald-400 text-xs rounded-xl flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{configSuccessMsg}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-amber-500/10"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Guardar Parámetros</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm("¿Restablecer configuración a valores por defecto?")) {
+                      setScoreConfigState(DEFAULT_SCORE_CONFIG);
+                      saveScoreConfig(DEFAULT_SCORE_CONFIG);
+                      setConfigSuccessMsg("Valores restablecidos por defecto.");
+                      setTimeout(() => setConfigSuccessMsg(null), 3000);
+                    }
+                  }}
+                  className="px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors border border-white/5"
+                  title="Restablecer Por Defecto"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+            </form>
           </div>
         </div>
       )}

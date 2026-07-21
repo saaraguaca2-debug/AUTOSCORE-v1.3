@@ -132,7 +132,7 @@ export default function App() {
           </div>
 
           {/* Vistas dinámicas */}
-          <div className="flex-1 flex flex-col py-2">
+          <div className="flex-1 flex flex-col py-2 w-full max-w-full overflow-x-hidden">
             {(() => {
               switch (currentView) {
                 case "home":
@@ -155,69 +155,69 @@ export default function App() {
       </main>
 
       {/* 4. Barra de Navegación de Control de Tacto Inferior (Dock Flotante) */}
-      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/70 backdrop-blur-lg border border-white/10 py-2.5 px-6 rounded-2xl shadow-2xl flex items-center gap-7 z-40 animate-fade-in max-w-sm ring-1 ring-white/5 no-print">
+      <div className="fixed bottom-3 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-white/10 py-2 px-3 sm:px-4 rounded-2xl shadow-2xl flex items-center justify-between gap-1.5 sm:gap-3 z-40 animate-fade-in w-[calc(100%-1.5rem)] max-w-sm ring-1 ring-white/5 no-print">
         
         <button
           onClick={() => navegarA("home")}
-          className={`flex flex-col items-center gap-1 transition-all ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
             currentView === "home" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-home"
         >
-          <Home className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px]">Inicio</span>
+          <Home className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+          <span className="text-[9px] sm:text-[10px] truncate">Inicio</span>
         </button>
 
-        <div className="w-[1px] h-6 bg-slate-800" />
+        <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
         <button
           onClick={() => navegarA("usuario")}
-          className={`flex flex-col items-center gap-1 transition-all ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
             currentView === "usuario" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-usuario"
         >
-          <Car className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px]">Garage</span>
+          <Car className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+          <span className="text-[9px] sm:text-[10px] truncate">Garage</span>
         </button>
 
-        <div className="w-[1px] h-6 bg-slate-800" />
+        <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
         <button
           onClick={() => navegarA("mecanico")}
-          className={`flex flex-col items-center gap-1 transition-all ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
             currentView === "mecanico" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-mecanico"
         >
-          <PenTool className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px]">Técnico</span>
+          <PenTool className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+          <span className="text-[9px] sm:text-[10px] truncate">Técnico</span>
         </button>
 
-        <div className="w-[1px] h-6 bg-slate-800" />
+        <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
         <button
           onClick={() => navegarA("admin")}
-          className={`flex flex-col items-center gap-1 transition-all ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
             currentView === "admin" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-admin"
         >
-          <Lock className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px]">Admin</span>
+          <Lock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+          <span className="text-[9px] sm:text-[10px] truncate">Admin</span>
         </button>
 
-        <div className="w-[1px] h-6 bg-slate-800" />
+        <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
         <button
           onClick={() => navegarA("documentacion")}
-          className={`flex flex-col items-center gap-1 transition-all ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
             currentView === "documentacion" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-soporte"
         >
-          <BookOpen className="w-5 h-5 stroke-[2]" />
-          <span className="text-[10px]">Guías</span>
+          <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+          <span className="text-[9px] sm:text-[10px] truncate">Guías</span>
         </button>
 
       </div>
