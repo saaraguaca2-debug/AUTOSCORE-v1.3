@@ -360,12 +360,10 @@ function doGet(e) {
               trabajoRealizado: getRowValue(rowH, headersH, "TrabajoRealizado")
             };
             
-            // Cruzar teléfono de mecánico SOLO si es tipo completo (Certificado Premium)
-            if (tipoCertificado === "completo") {
-              const normalizedCodMec = codMec.toString().trim().toLowerCase();
-              if (mecMap[normalizedCodMec]) {
-                item.telefonoMecanico = mecMap[normalizedCodMec].telefono;
-              }
+            // Cruzar teléfono de mecánico si está disponible
+            const normalizedCodMec = codMec.toString().trim().toLowerCase();
+            if (mecMap[normalizedCodMec]) {
+              item.telefonoMecanico = mecMap[normalizedCodMec].telefono;
             }
             
             timeline.push(item);

@@ -3,7 +3,7 @@ import {
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
   Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
   CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
-  PenTool
+  PenTool, Share2
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { 
@@ -54,6 +54,18 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   const [showFaceToFaceQR, setShowFaceToFaceQR] = useState(false);
   const [showMecanicoQR, setShowMecanicoQR] = useState(false);
   const [activeTecnicoModal, setActiveTecnicoModal] = useState<any | null>(null);
+
+  const [baseUrlOverride, setBaseUrlOverride] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("autoscore_base_url_override");
+      return saved || window.location.origin;
+    }
+    return "";
+  });
+
+  useEffect(() => {
+    localStorage.setItem("autoscore_base_url_override", baseUrlOverride);
+  }, [baseUrlOverride]);
 
   // Registro de vehículo
   const [mostrarFormCar, setMostrarFormCar] = useState(false);
@@ -139,8 +151,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
           const resVeh = simularGetPorDueno(idDuenoInput);
           setVehiculos(resVeh.data || []);
           setLoggedUser({
-            idDueno: res.usuario.idDueno,
-            nombre: res.usuario.nombre
+            idDueno: res.usuario?.idDueno || idDuenoInput.trim(),
+            nombre: res.usuario?.nombre || idDuenoInput.trim()
           });
           setViewMode("garage");
         } else {
@@ -155,14 +167,18 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
         const json = await res.json();
         if (json && json.success) {
-          // Obtener vehículos de este dueño
-          const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(json.usuario.idDueno)}`;
+          // Obtener vehículos de este dueño de forma ultra segura
+          const userObj = json.usuario || json.user || {};
+          const cleanId = userObj.idDueno || userObj.IdDueno || idDuenoInput.trim();
+          const cleanNombre = userObj.nombre || userObj.Nombre || idDuenoInput.trim();
+
+          const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(cleanId)}`;
           const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
           const vehJson = await vehRes.json();
           setVehiculos(vehJson.data || []);
           setLoggedUser({
-            idDueno: json.usuario.idDueno,
-            nombre: json.usuario.nombre
+            idDueno: cleanId,
+            nombre: cleanNombre
           });
           setViewMode("garage");
         } else {
@@ -362,14 +378,81 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     }
   };
 
+  // Obtener Enlace Digital de Certificado Completo
+  const getPublicShareUrl = () => {
+    if (!selectedCar) return "";
+    const base = baseUrlOverride || window.location.origin;
+    let path = `${base}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
+    if (appScriptUrl) {
+      path += `&api=${encodeURIComponent(appScriptUrl)}`;
+    }
+    return path;
+  };
+
   // Copiar Enlace Digital para WhatsApp o Marketplace
   const copyPublicLink = () => {
-    if (!selectedCar) return;
-    const path = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
+    const path = getPublicShareUrl();
+    if (!path) return;
     navigator.clipboard.writeText(path);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
+
+  // Formatear teléfono a formato internacional WhatsApp para evitar fallas
+  const formatWhatsAppNumber = (phone: string): string => {
+    let cleaned = String(phone).replace(/[^0-9]/g, "");
+    if (!cleaned) return "";
+    if (cleaned.startsWith("0")) {
+      cleaned = cleaned.substring(1);
+    }
+    // Autocompletar código de país de Venezuela (58) si no lo tiene
+    if (cleaned.length === 10 && (cleaned.startsWith("414") || cleaned.startsWith("424") || cleaned.startsWith("412") || cleaned.startsWith("416") || cleaned.startsWith("426"))) {
+      cleaned = "58" + cleaned;
+    }
+    if (cleaned.length === 9 && (cleaned.startsWith("414") || cleaned.startsWith("424") || cleaned.startsWith("412") || cleaned.startsWith("416") || cleaned.startsWith("426"))) {
+      cleaned = "58" + cleaned;
+    }
+    return cleaned;
+  };
+
+  const [copiedMecanicos, setCopiedMecanicos] = useState(false);
+
+  // Copiar resumen de trazabilidad de los mecánicos firmantes
+  const copyMecanicosTrazabilidad = () => {
+    if (!selectedCar || historial.length === 0) return;
+    
+    // Obtener lista única de mecánicos/talleres del historial
+    const uniqueMecsMap: { [key: string]: { taller: string, telefono: string, codigo: string } } = {};
+    const localMecanicos = getSimulatedData().mecanicos;
+
+    historial.forEach((row) => {
+      const cod = row.codigoMecanico || "";
+      if (cod && !uniqueMecsMap[cod]) {
+        const localMec = localMecanicos.find(
+          m => m.codigoMecanico.trim().toLowerCase() === cod.trim().toLowerCase()
+        );
+        const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+        uniqueMecsMap[cod] = {
+          taller: row.taller,
+          telefono: tel ? String(tel) : "",
+          codigo: cod
+        };
+      }
+    });
+
+    const listStr = Object.values(uniqueMecsMap).map(m => {
+      const waLink = m.telefono ? `https://wa.me/${formatWhatsAppNumber(m.telefono)}` : "WhatsApp no configurado";
+      return `- Taller: ${m.taller} (Firma: #${m.codigo}) | WhatsApp: ${m.telefono ? `+${formatWhatsAppNumber(m.telefono)} (${waLink})` : "No registrado"}`;
+    }).join("\n");
+
+    const text = `Trazabilidad Oficial de Reparaciones Autorizadas - AutoScore v1.3\nVehículo: ${selectedCar.marca} ${selectedCar.modelo} (Placa: ${selectedCar.placa})\nScore de Salud: ${selectedCar.score}/100\n\nMecánicos Firmantes Certificados:\n${listStr}\n\nVerificado digitalmente en la plataforma AutoScore.`;
+    
+    navigator.clipboard.writeText(text);
+    setCopiedMecanicos(true);
+    setTimeout(() => setCopiedMecanicos(false), 2500);
+  };
+
+  const [usarQrUltraligero, setUsarQrUltraligero] = useState(true);
 
   const getScoreColor = (score: number) => {
     if (score >= 90) return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
@@ -386,15 +469,23 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // URL del QR de certificación interactivo cara a cara
   const generateQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const publicLink = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
-    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(publicLink)}`;
+    const base = baseUrlOverride || window.location.origin;
+    let publicLink = `${base}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
+    if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
+      publicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
+    }
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=000000&data=${encodeURIComponent(publicLink)}`;
   };
 
   // URL del QR para firma de mecánicos
   const generateMecanicoQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const mechanicLink = `${window.location.origin}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
-    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(mechanicLink)}`;
+    const base = baseUrlOverride || window.location.origin;
+    let mechanicLink = `${base}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}`;
+    if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
+      mechanicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
+    }
+    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=000000&data=${encodeURIComponent(mechanicLink)}`;
   };
 
   return (
@@ -847,48 +938,141 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                       <span>Línea de Tiempo Verificada ({historial.length})</span>
                     </h5>
 
-                    <div className="space-y-4 max-h-[280px] overflow-y-auto pr-1">
-                      {historial.map((row, idx) => (
-                        <div key={idx} className="border-l-2 border-amber-500 pl-3 py-1 relative">
-                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                            <span>{row.fecha ? row.fecha.split(" ")[0] : ""}</span>
-                            <span className="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded">{row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km</span>
+                    <div className="space-y-5 max-h-[360px] overflow-y-auto pr-1">
+                      {historial.map((row, idx) => {
+                        // Obtener teléfono del mecánico de forma segura
+                        const localMecanicos = getSimulatedData().mecanicos;
+                        const localMec = localMecanicos.find(
+                          m => m.codigoMecanico.trim().toLowerCase() === row.codigoMecanico?.trim().toLowerCase()
+                        );
+                        const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+                        const formattedTel = formatWhatsAppNumber(tel);
+                        
+                        // Mensaje personalizado de corroboración para compradores interesados
+                        const textMsg = `Hola ${row.taller || (localMec ? localMec.taller : "Taller")}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
+
+                        return (
+                          <div key={idx} className="border-l-2 border-amber-500 pl-4 py-2 relative space-y-3 bg-slate-950/20 rounded-r-xl pr-2 hover:bg-slate-950/40 transition-all duration-200">
+                            {/* Fecha y Kilometraje */}
+                            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                              <span className="bg-slate-900 border border-white/5 px-2 py-0.5 rounded text-slate-300 font-bold">{row.fecha ? row.fecha.split(" ")[0] : ""}</span>
+                              <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/10">{row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km</span>
+                            </div>
+                            
+                            {/* Trabajo Realizado */}
+                            <p className="text-xs text-slate-100 leading-relaxed font-normal bg-black/30 p-2.5 rounded-lg border border-white/5">{row.trabajoRealizado}</p>
+                            
+                            {/* TARJETA DEL TALLER INTEGRADA (Trazabilidad Inmediata) */}
+                            <div className="bg-[#0b0c10] border border-emerald-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
+                              <div className="text-left space-y-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span className="font-black text-white text-[11px] uppercase tracking-wide">{row.taller}</span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 font-mono">
+                                  <span className="text-emerald-500 font-bold">Firma Técnica: #{row.codigoMecanico}</span>
+                                  {tel && <span className="text-slate-500">• Tel: {tel}</span>}
+                                </div>
+                              </div>
+                              
+                              {/* Botón de Contacto Directo WhatsApp */}
+                              {formattedTel ? (
+                                <a
+                                  href={`https://wa.me/${formattedTel}?text=${encodeURIComponent(textMsg)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20"
+                                >
+                                  <Phone className="w-3 h-3 shrink-0" />
+                                  <span>Consultar Trabajo</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="text-[8.5px] text-slate-500 italic px-2.5 py-1.5 bg-slate-900 rounded border border-white/5 text-center">
+                                  WhatsApp no disponible
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-slate-200 mt-1 leading-normal font-light">{row.trabajoRealizado}</p>
-                          
-                          {/* Botón de Trazabilidad Clicable (Taller verde) */}
-                          <div className="mt-2 flex justify-between items-center">
-                            <button
-                              onClick={() => {
-                                // Buscar de forma segura en la DB local como fallback si no viene de Sheets
-                                const localMecanicos = getSimulatedData().mecanicos;
-                                const localMec = localMecanicos.find(
-                                  m => m.codigoMecanico.trim().toLowerCase() === row.codigoMecanico?.trim().toLowerCase()
-                                );
-                                const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : undefined);
-                                
-                                setActiveTecnicoModal({
-                                  taller: row.taller,
-                                  codigo: row.codigoMecanico,
-                                  telefono: tel,
-                                  fecha: row.fecha,
-                                  kilometraje: row.kilometraje,
-                                  trabajo: row.trabajoRealizado
-                                });
-                              }}
-                              className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 transition-all flex items-center gap-1"
-                            >
-                              <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
-                              <span>Verificar Taller: {row.taller}</span>
-                            </button>
-                            <span className="text-[9px] font-mono text-slate-500">Firma: #{row.codigoMecanico}</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                       {historial.length === 0 && (
                         <p className="text-xs text-slate-500 text-center py-4">No se han firmado mantenimientos técnicos aún.</p>
                       )}
                     </div>
+
+                    {/* SECCIÓN CONSOLIDADA DE MECÁNICOS CERTIFICADOS CON ENLACE DE WHATSAPP DIRECTO */}
+                    {historial.length > 0 && (
+                      <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-2xl mt-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-4 h-4 text-emerald-400" />
+                            <span className="text-[10px] font-mono font-bold text-slate-200 uppercase tracking-wider">Mecánicos Reparadores ({
+                              Array.from(new Set(historial.map(h => h.codigoMecanico).filter(Boolean))).length
+                            })</span>
+                          </div>
+                          
+                          <button
+                            onClick={copyMecanicosTrazabilidad}
+                            className="text-[8.5px] font-bold text-slate-300 hover:text-amber-400 border border-white/10 hover:border-amber-500/30 px-2 py-0.5 rounded transition-all bg-slate-950 flex items-center gap-1"
+                          >
+                            {copiedMecanicos ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5 text-amber-500" />}
+                            <span>Copiar Lista</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                          {(() => {
+                            const uniqueMecsMap: { [key: string]: { taller: string, telefono: string, codigo: string } } = {};
+                            const localMecanicos = getSimulatedData().mecanicos;
+
+                            historial.forEach((row) => {
+                              const cod = row.codigoMecanico || "";
+                              if (cod && !uniqueMecsMap[cod]) {
+                                const localMec = localMecanicos.find(
+                                  m => m.codigoMecanico.trim().toLowerCase() === cod.trim().toLowerCase()
+                                );
+                                const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+                                uniqueMecsMap[cod] = {
+                                  taller: row.taller,
+                                  telefono: tel ? String(tel) : "",
+                                  codigo: cod
+                                };
+                              }
+                            });
+
+                            return Object.values(uniqueMecsMap).map((mec, index) => {
+                              const cleanedPhone = formatWhatsAppNumber(mec.telefono);
+                              const textMsg = `Hola ${mec.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y en la plataforma de AutoScore aparece registrado que ustedes firmaron su mantenimiento con código de sello #${mec.codigo}. ¿Podrían confirmarme la validez de estos trabajos en su taller? Muchas gracias.`;
+                              
+                              return (
+                                <div key={index} className="flex items-center justify-between p-2 bg-slate-950/80 border border-white/5 rounded-xl text-xs">
+                                  <div>
+                                    <span className="font-extrabold text-white block truncate max-w-[150px]">{mec.taller}</span>
+                                    <span className="text-[9px] text-slate-500 font-mono">Sello Digital: #{mec.codigo}</span>
+                                  </div>
+                                  
+                                  {mec.telefono ? (
+                                    <a
+                                      href={`https://wa.me/${cleanedPhone}?text=${encodeURIComponent(textMsg)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold px-2.5 py-1 rounded text-[10px] flex items-center gap-1.5 transition-all border border-emerald-500/20 active:scale-95"
+                                    >
+                                      <Phone className="w-3 h-3 text-emerald-500" />
+                                      <span>WhatsApp</span>
+                                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-[8.5px] text-slate-600 font-medium italic">WhatsApp no config.</span>
+                                  )}
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -905,86 +1089,171 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
               {/* OPCIONES DE COMPARTIR INTERACTIVAS (SOLO COMPLETO) */}
               {activeCertType === "completo" && (
-                <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl space-y-3.5 no-print">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">COMPARTIR CERTIFICADO PRESTIGIO</span>
-                  
-                  <div className="grid grid-cols-2 gap-2.5">
-                    {/* Opción A: Copiar Enlace Digital */}
+                <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl space-y-4 no-print text-left">
+                  <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                    <Share2 className="w-4 h-4 text-amber-500" />
+                    <span className="block text-[10px] font-bold text-slate-300 uppercase tracking-widest">COMPARTIR CERTIFICADO PRESTIGIO</span>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5">
+                    {/* ACCIÓN PRINCIPAL: COMPARTIR DIRECTAMENTE EN WHATSAPP */}
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(
+                        `¡Hola! Te comparto el Certificado Oficial de AutoScore de mi vehículo *${selectedCar.marca} ${selectedCar.modelo} ${selectedCar.anio}* (Placa: *${selectedCar.placa}*), con un Score de Salud Mecánica de *${selectedCar.score}/100*. Puedes verificar todo el historial detallado de mantenimientos certificados en talleres autorizados aquí:\n\n${getPublicShareUrl()}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-[#25D366]/10 active:scale-[0.99]"
+                    >
+                      <Phone className="w-4 h-4 shrink-0 fill-current" />
+                      <span>Compartir por WhatsApp</span>
+                    </a>
+
+                    {/* ACCIÓN SECUNDARIA: COPIAR ENLACE */}
                     <button
                       onClick={copyPublicLink}
-                      className="bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold p-3 rounded-xl text-xs transition-all flex flex-col items-center justify-center text-center gap-1.5"
+                      className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
                     >
-                      {copiedLink ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5 text-amber-500" />}
-                      <div>
-                        <span className="block font-black leading-tight text-white">Copiar Enlace</span>
-                        <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Comprador a distancia</span>
-                      </div>
-                    </button>
-
-                    {/* Opción B: Mostrar QR de Certificación */}
-                    <button
-                      onClick={() => {
-                        setShowFaceToFaceQR(!showFaceToFaceQR);
-                        setShowMecanicoQR(false);
-                      }}
-                      className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-bold p-3 rounded-xl text-xs transition-all flex flex-col items-center justify-center text-center gap-1.5"
-                    >
-                      <QrCode className="w-5 h-5 text-amber-400" />
-                      <div>
-                        <span className="block font-black leading-tight">Mostrar QR de Venta</span>
-                        <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Comprador en persona</span>
-                      </div>
+                      {copiedLink ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span className="text-emerald-400 font-black">¡Enlace Copiado al Portapapeles!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 text-amber-500 shrink-0" />
+                          <span>Copiar Enlace para Compradores o Marketplace</span>
+                        </>
+                      )}
                     </button>
                   </div>
 
-                  {/* Opción C: QR para Firmar Reparaciones (Mecánico) */}
-                  <button
-                    onClick={() => {
-                      setShowMecanicoQR(!showMecanicoQR);
-                      setShowFaceToFaceQR(false);
-                    }}
-                    className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 font-bold p-3 rounded-xl text-xs transition-all flex items-center justify-center gap-3"
-                  >
-                    <PenTool className="w-5 h-5 text-emerald-400" />
-                    <div className="text-left">
-                      <span className="block font-black leading-tight text-white">Generar QR para Mecánico</span>
-                      <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Para que el mecánico firme la reparación desde su celular</span>
-                    </div>
-                  </button>
+                  {/* AJUSTES AVANZADOS Y CÓDIGOS QR (COLAPSADOS PARA EVITAR RUIDO VISUAL) */}
+                  <details className="group border border-white/5 bg-slate-950/40 rounded-xl overflow-hidden">
+                    <summary className="cursor-pointer text-[9.5px] font-bold text-slate-400 hover:text-white p-3 flex justify-between items-center select-none bg-slate-950/25">
+                      <span className="flex items-center gap-1.5 font-mono uppercase tracking-wider">
+                        <QrCode className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Ver Opciones de Códigos QR (Avanzado)</span>
+                      </span>
+                      <span className="text-[8px] opacity-70 transition-transform group-open:rotate-180">▼</span>
+                    </summary>
+                    <div className="p-3 border-t border-white/5 space-y-4 bg-slate-950/15">
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* QR Comprador */}
+                        <button
+                          onClick={() => {
+                            setShowFaceToFaceQR(!showFaceToFaceQR);
+                            setShowMecanicoQR(false);
+                          }}
+                          className={`p-2.5 rounded-lg border text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
+                            showFaceToFaceQR
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                              : "bg-slate-900 border-white/5 text-slate-300 hover:bg-slate-900/80"
+                          }`}
+                        >
+                          <QrCode className="w-4 h-4 animate-pulse" />
+                          <div>
+                            <span className="block leading-tight">QR de Venta</span>
+                            <span className="block text-[8px] font-normal text-slate-400 mt-0.5">Comprador presencial</span>
+                          </div>
+                        </button>
 
-                  {/* CÓDIGO QR EN GRANDE PARA COMPRADOR EN FRENTE */}
-                  {showFaceToFaceQR && (
-                    <div className="p-4 bg-slate-950 border border-amber-500/20 rounded-2xl text-center space-y-3.5 animate-fade-in">
-                      <div className="bg-white p-3.5 rounded-2xl inline-block shadow-lg border border-slate-800">
-                        <img
-                          src={generateQRCodeUrl()}
-                          alt="QR Enlace Digital de Venta"
-                          className="w-48 h-48 block mx-auto"
-                          referrerPolicy="no-referrer"
-                        />
+                        {/* QR Mecánico */}
+                        <button
+                          onClick={() => {
+                            setShowMecanicoQR(!showMecanicoQR);
+                            setShowFaceToFaceQR(false);
+                          }}
+                          className={`p-2.5 rounded-lg border text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
+                            showMecanicoQR
+                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                              : "bg-slate-900 border-white/5 text-slate-300 hover:bg-slate-900/80"
+                          }`}
+                        >
+                          <PenTool className="w-4 h-4" />
+                          <div>
+                            <span className="block leading-tight">QR para Mecánico</span>
+                            <span className="block text-[8px] font-normal text-slate-400 mt-0.5">Para firmar en sitio</span>
+                          </div>
+                        </button>
                       </div>
-                      <p className="text-xs text-slate-300 leading-normal max-w-[85%] mx-auto">
-                        <strong>Escaneo Directo:</strong> El comprador enfrente puede escanear este QR con su cámara para abrir el Certificado Oficial Completo en su propio celular sin instalar nada.
-                      </p>
-                    </div>
-                  )}
 
-                  {/* CÓDIGO QR EN GRANDE PARA EL MECÁNICO */}
-                  {showMecanicoQR && (
-                    <div className="p-4 bg-slate-950 border border-emerald-500/20 rounded-2xl text-center space-y-3.5 animate-fade-in">
-                      <div className="bg-white p-3.5 rounded-2xl inline-block shadow-lg border border-slate-800">
-                        <img
-                          src={generateMecanicoQRCodeUrl()}
-                          alt="QR Firma Técnico"
-                          className="w-48 h-48 block mx-auto"
-                          referrerPolicy="no-referrer"
-                        />
+                      {/* AJUSTE COMPATIBILIDAD QR PARA CELULARES */}
+                      <div className="bg-slate-950 p-3 rounded-lg border border-white/5 space-y-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-left">
+                            <span className="text-[9px] font-bold text-white block">Sello QR Ultraligero</span>
+                            <span className="text-[8px] text-slate-400 block mt-0.5">Mejora el escaneo en teléfonos antiguos</span>
+                          </div>
+                          <button
+                            onClick={() => setUsarQrUltraligero(!usarQrUltraligero)}
+                            className={`text-[8px] font-black px-2 py-1 rounded transition-all shrink-0 ${
+                              usarQrUltraligero
+                                ? "bg-amber-500 text-slate-950"
+                                : "bg-slate-900 border border-white/10 text-slate-300"
+                            }`}
+                          >
+                            {usarQrUltraligero ? "⚡ Activado" : "Standard"}
+                          </button>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/5">
+                          <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                            URL Base del Servidor (QR)
+                          </label>
+                          <div className="flex gap-1">
+                            <input
+                              type="text"
+                              value={baseUrlOverride}
+                              onChange={(e) => setBaseUrlOverride(e.target.value)}
+                              placeholder="Ej: https://mi-dominio.com"
+                              className="flex-1 bg-slate-900 text-[9.5px] text-slate-200 border border-white/10 px-2.5 py-1 rounded font-mono focus:outline-none"
+                            />
+                            <button
+                              onClick={() => setBaseUrlOverride(window.location.origin)}
+                              className="bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white px-2 py-1 rounded text-[8px] font-bold transition-all border border-white/5 shrink-0"
+                            >
+                              Reset
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-slate-300 leading-normal max-w-[85%] mx-auto">
-                        <strong>Firma Técnica:</strong> El mecánico puede escanear este QR con su teléfono para ingresar directamente al panel de firma técnica con la placa <strong>{selectedCar.placa}</strong> precargada de forma segura.
-                      </p>
+
+                      {/* RENDER QR COMPRADOR */}
+                      {showFaceToFaceQR && (
+                        <div className="p-3 bg-slate-950 border border-amber-500/10 rounded-lg text-center space-y-2">
+                          <div className="bg-white p-2 rounded-lg inline-block shadow-md">
+                            <img
+                              src={generateQRCodeUrl()}
+                              alt="QR Enlace de Venta"
+                              className="w-36 h-36 block mx-auto"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-300 leading-tight">
+                            El comprador escanea este código para ver este Certificado Verificado en su celular de inmediato.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* RENDER QR MECÁNICO */}
+                      {showMecanicoQR && (
+                        <div className="p-3 bg-slate-950 border border-emerald-500/10 rounded-lg text-center space-y-2">
+                          <div className="bg-white p-2 rounded-lg inline-block shadow-md">
+                            <img
+                              src={generateMecanicoQRCodeUrl()}
+                              alt="QR Firma Técnico"
+                              className="w-36 h-36 block mx-auto"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <p className="text-[10px] text-slate-300 leading-tight">
+                            El mecánico escanea este código para firmar reparaciones del vehículo desde su celular.
+                          </p>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </details>
                 </div>
               )}
 
@@ -1048,7 +1317,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
             {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN */}
             {activeTecnicoModal.telefono ? (
               <a
-                href={`https://wa.me/${activeTecnicoModal.telefono.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                href={`https://wa.me/${formatWhatsAppNumber(activeTecnicoModal.telefono)}?text=${encodeURIComponent(
                   `Hola ${activeTecnicoModal.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y tiene registrado en AutoScore un mantenimiento firmado por ustedes el día ${activeTecnicoModal.fecha.split(" ")[0]} con ${activeTecnicoModal.kilometraje} km ("${activeTecnicoModal.trabajo}"). ¿Podrían corroborar de celular a celular la validez de este trabajo en su taller? Muchas gracias.`
                 )}`}
                 target="_blank"
