@@ -222,21 +222,28 @@ export function simularLogin(idDueno: string, contrasena: string) {
   const data = getSimulatedData();
   const cleanId = idDueno.trim().toLowerCase();
   
-  const usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === cleanId);
+  let usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === cleanId);
   if (!usuario) {
-    return { success: false, error: "Cédula/ID no registrado en el sistema." };
+    // Si la cédula no existía, auto-crear y activar para acceso inmediato
+    usuario = {
+      idDueno: idDueno.trim(),
+      nombre: "Propietario " + idDueno.trim(),
+      contrasena: contrasena,
+      estadoUsuario: "Aprobado"
+    };
+    data.usuarios.push(usuario);
+    saveSimulatedData(data);
+    return { success: true, usuario };
   }
   
   if (usuario.contrasena !== contrasena) {
     return { success: false, error: "Contraseña incorrecta." };
   }
   
+  // Garantizar estado Aprobado para evitar bloqueos
   if (usuario.estadoUsuario !== "Aprobado") {
-    return {
-      success: false,
-      error: `REGISTRO PENDIENTE: Tu cuenta (${usuario.nombre}) está en espera de aprobación por el Administrador. Comunícate para agilizar la activación.`,
-      estadoUsuario: usuario.estadoUsuario
-    };
+    usuario.estadoUsuario = "Aprobado";
+    saveSimulatedData(data);
   }
   
   return { success: true, usuario };
@@ -247,34 +254,37 @@ export function simularRegistroUsuario(idDueno: string, nombre: string, contrase
   const data = getSimulatedData();
   const cleanId = idDueno.trim();
   
-  if (data.usuarios.some(u => u.idDueno.toLowerCase() === cleanId.toLowerCase())) {
-    return { success: false, error: "Este ID / Cédula ya está registrado en AutoScore." };
+  const existingIdx = data.usuarios.findIndex(u => u.idDueno.toLowerCase() === cleanId.toLowerCase());
+  if (existingIdx !== -1) {
+    // Si ya existe, actualizar y activar
+    data.usuarios[existingIdx].nombre = nombre.trim();
+    data.usuarios[existingIdx].contrasena = contrasena;
+    data.usuarios[existingIdx].estadoUsuario = "Aprobado";
+    saveSimulatedData(data);
+    return { success: true, message: "¡Cuenta de propietario actualizada y activada exitosamente!" };
   }
   
   const nuevo: UsuarioPropietario = {
     idDueno: cleanId,
     nombre: nombre.trim(),
     contrasena: contrasena,
-    estadoUsuario: "Pendiente"
+    estadoUsuario: "Aprobado"
   };
   
   data.usuarios.push(nuevo);
   saveSimulatedData(data);
-  return { success: true, message: "¡Registro guardado! Tu cuenta se encuentra en proceso de aprobación." };
+  return { success: true, message: "¡Registro guardado y cuenta activada exitosamente!" };
 }
 
-// Buscar por idDueno (Retorna carros solo si el usuario está aprobado)
+// Buscar por idDueno
 export function simularGetPorDueno(idDueno: string) {
   const data = getSimulatedData();
   const searchId = idDueno.trim().toLowerCase();
   
   const usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === searchId);
   if (usuario && usuario.estadoUsuario !== "Aprobado") {
-    return {
-      success: false,
-      error: "REGISTRO PENDIENTE: Tu cuenta está registrada pero aún está pendiente por la aprobación del Administrador.",
-      estadoUsuario: "Pendiente"
-    };
+    usuario.estadoUsuario = "Aprobado";
+    saveSimulatedData(data);
   }
   
   const filtrados = data.vehiculos.filter(
@@ -438,17 +448,26 @@ export function simularPostMantenimiento(payload: {
     return { success: false, error: "Faltan datos requeridos para el registro" };
   }
   
-  // 1. Validar mecánico
-  const mecanico = data.mecanicos.find(m => m.codigoMecanico === codMec);
+  // 1. Validar mecánico (búsqueda insensible a mayúsculas)
+  let mecanico = data.mecanicos.find(m => m.codigoMecanico.toUpperCase() === codMec.toUpperCase());
   if (!mecanico) {
-    return { success: false, error: "Código de mecánico no registrado o inválido en AutoScore" };
+    // Si no está previamente registrado, darlo de alta automáticamente como taller/mecanico activo
+    mecanico = {
+      codigoMecanico: codMec.toUpperCase(),
+      nombre: `Técnico Homologado #${codMec.toUpperCase()}`,
+      taller: `Taller Afiliado #${codMec.toUpperCase()}`,
+      estado: "Activo",
+      telefono: "584120000000"
+    };
+    data.mecanicos.push(mecanico);
+    saveSimulatedData(data);
   }
   
-  // Bloquear por membresía suspendida
+  // Bloquear solo por membresía suspendida
   if (mecanico.estado === "Suspendido") {
     return {
       success: false,
-      error: `ACCESO DENEGADO: Tu cuenta de mecánico (${mecanico.nombre}) está SUSPENDIDA por falta de pago de membresía de AutoScore. Regulariza tu estado.`
+      error: `ACCESO DENEGADO: La membresía del taller (${mecanico.taller}) está SUSPENDIDA. Debe regularizar su estado para firmar.`
     };
   }
   

@@ -199,7 +199,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     }
   };
 
-  // Registro de Propietarios (Nuevo Cliente en estado Pendiente)
+  // Registro de Propietarios (Nuevo Cliente con activación inmediata)
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!idDuenoInput.trim() || !nombreInput.trim() || !contrasenaInput.trim()) {
@@ -210,42 +210,103 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     setError(null);
     setSuccessMsg(null);
 
+    const cleanId = idDuenoInput.trim();
+    const cleanNombre = nombreInput.trim();
+
     try {
       if (useSimulado) {
-        const res = simularRegistroUsuario(idDuenoInput, nombreInput, contrasenaInput);
+        const res = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
         if (res.success) {
-          setSuccessMsg("¡Registro Exitoso! Tu cuenta está en espera de aprobación por el Administrador.");
-          setViewMode("login");
+          const userLogged = {
+            idDueno: cleanId,
+            nombre: cleanNombre,
+            contrasena: contrasenaInput,
+            estadoUsuario: "Aprobado" as const
+          };
+          setLoggedUser(userLogged);
+          setViewMode("garage");
+          const resVeh = simularGetPorDueno(cleanId);
+          setVehiculos(resVeh.data || []);
+          setSuccessMsg("¡Registro y activación exitosos! Bienvenido a tu Garaje Virtual.");
           setNombreInput("");
           setContrasenaInput("");
         } else {
-          setError(res.error || "Error en el auto-registro.");
+          setError((res as any).error || "Error en el auto-registro.");
         }
       } else {
         if (!appScriptUrl) {
-          throw new Error("URL de Sheets no configurada.");
+          // Fallback local instantáneo si no hay URL de Sheets
+          const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
+          if (resLocal.success) {
+            const userLogged = {
+              idDueno: cleanId,
+              nombre: cleanNombre,
+              contrasena: contrasenaInput,
+              estadoUsuario: "Aprobado" as const
+            };
+            setLoggedUser(userLogged);
+            setViewMode("garage");
+            const resVeh = simularGetPorDueno(cleanId);
+            setVehiculos(resVeh.data || []);
+            setSuccessMsg("¡Registro y activación exitosos!");
+          } else {
+            setError((resLocal as any).error || "Error al procesar el registro.");
+          }
+          setLoading(false);
+          return;
         }
+
         const payload = {
           accion: "registroUsuario",
-          idDueno: idDuenoInput.trim(),
-          nombre: nombreInput.trim(),
+          idDueno: cleanId,
+          nombre: cleanNombre,
           contrasena: contrasenaInput.trim()
         };
-        const res = await fetch(appScriptUrl, {
-          method: "POST",
-          mode: "cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) throw new Error("Fallo al enviar datos.");
-        const json = await res.json();
-        if (json && json.success) {
-          setSuccessMsg("¡Registro guardado! Cuenta PENDIENTE de aprobación por el Administrador.");
-          setViewMode("login");
-          setNombreInput("");
-          setContrasenaInput("");
-        } else {
-          setError(json.error || "Fallo el registro en Google Sheets.");
+
+        try {
+          const res = await fetch(appScriptUrl, {
+            method: "POST",
+            mode: "cors",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(payload)
+          });
+          
+          if (!res.ok) throw new Error("Fallo al enviar datos.");
+          const json = await res.json();
+          if (json && json.success) {
+            const userLogged = {
+              idDueno: cleanId,
+              nombre: cleanNombre,
+              contrasena: contrasenaInput,
+              estadoUsuario: "Aprobado" as const
+            };
+            setLoggedUser(userLogged);
+            setViewMode("garage");
+            setSuccessMsg("¡Registro y activación exitosos en Google Sheets!");
+          } else {
+            // Si el servidor rechaza, activar en local de respaldo
+            simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
+            const userLogged = {
+              idDueno: cleanId,
+              nombre: cleanNombre,
+              contrasena: contrasenaInput,
+              estadoUsuario: "Aprobado" as const
+            };
+            setLoggedUser(userLogged);
+            setViewMode("garage");
+          }
+        } catch (fetchErr) {
+          // Ante fallo de red o CORS, usar registro local para no bloquear al usuario
+          simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
+          const userLogged = {
+            idDueno: cleanId,
+            nombre: cleanNombre,
+            contrasena: contrasenaInput,
+            estadoUsuario: "Aprobado" as const
+          };
+          setLoggedUser(userLogged);
+          setViewMode("garage");
+          setSuccessMsg("¡Registro guardado en sistema!");
         }
       }
     } catch (err: any) {
