@@ -415,6 +415,36 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     return cleaned;
   };
 
+  // Obtener de forma ultra robusta el teléfono de un mecánico cruzando todas las fuentes y nombres de columna posibles
+  const getMechanicPhone = (row: any, localMecs: any[]): string => {
+    if (!row) return "";
+    
+    // 1. Intentar buscar en las columnas comunes que podrían venir desde Google Sheets (con varias ortografías y mayúsculas/minúsculas)
+    const keys = [
+      "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec",
+      "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone"
+    ];
+    for (const key of keys) {
+      if (row[key] && String(row[key]).trim()) {
+        return String(row[key]).trim();
+      }
+    }
+    
+    // 2. Si no viene en el registro directo de Sheets, buscar en los mecánicos locales usando el código de firma digital
+    const rawCode = row.codigoMecanico || row.codigo || "";
+    const cleanCode = String(rawCode).trim().toLowerCase();
+    if (cleanCode) {
+      const match = localMecs.find(
+        m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
+      );
+      if (match && match.telefono) {
+        return String(match.telefono).trim();
+      }
+    }
+    
+    return "";
+  };
+
   const [copiedMecanicos, setCopiedMecanicos] = useState(false);
 
   // Copiar resumen de trazabilidad de los mecánicos firmantes
@@ -428,10 +458,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     historial.forEach((row) => {
       const cod = row.codigoMecanico || "";
       if (cod && !uniqueMecsMap[cod]) {
-        const localMec = localMecanicos.find(
-          m => m.codigoMecanico.trim().toLowerCase() === cod.trim().toLowerCase()
-        );
-        const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+        const tel = getMechanicPhone(row, localMecanicos);
         uniqueMecsMap[cod] = {
           taller: row.taller,
           telefono: tel ? String(tel) : "",
@@ -942,14 +969,11 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                       {historial.map((row, idx) => {
                         // Obtener teléfono del mecánico de forma segura
                         const localMecanicos = getSimulatedData().mecanicos;
-                        const localMec = localMecanicos.find(
-                          m => m.codigoMecanico.trim().toLowerCase() === row.codigoMecanico?.trim().toLowerCase()
-                        );
-                        const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+                        const tel = getMechanicPhone(row, localMecanicos);
                         const formattedTel = formatWhatsAppNumber(tel);
                         
                         // Mensaje personalizado de corroboración para compradores interesados
-                        const textMsg = `Hola ${row.taller || (localMec ? localMec.taller : "Taller")}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
+                        const textMsg = `Hola ${row.taller || "Taller"}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
 
                         return (
                           <div key={idx} className="border-l-2 border-amber-500 pl-4 py-2 relative space-y-3 bg-slate-950/20 rounded-r-xl pr-2 hover:bg-slate-950/40 transition-all duration-200">
@@ -962,6 +986,27 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                             {/* Trabajo Realizado */}
                             <p className="text-xs text-slate-100 leading-relaxed font-normal bg-black/30 p-2.5 rounded-lg border border-white/5">{row.trabajoRealizado}</p>
                             
+                            {/* ENLACE QUE ABRE TARJETA DEL TALLER */}
+                            <div className="flex justify-start">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTecnicoModal({
+                                    taller: row.taller,
+                                    codigo: row.codigoMecanico,
+                                    telefono: tel,
+                                    fecha: row.fecha,
+                                    kilometraje: row.kilometraje,
+                                    trabajo: row.trabajoRealizado
+                                  });
+                                }}
+                                className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all flex items-center gap-1.5 active:scale-95"
+                              >
+                                <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>Ver Tarjeta del Taller ({row.taller})</span>
+                              </button>
+                            </div>
+
                             {/* TARJETA DEL TALLER INTEGRADA (Trazabilidad Inmediata) */}
                             <div className="bg-[#0b0c10] border border-emerald-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
                               <div className="text-left space-y-0.5">
@@ -970,7 +1015,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                   <span className="font-black text-white text-[11px] uppercase tracking-wide">{row.taller}</span>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 font-mono">
-                                  <span className="text-emerald-500 font-bold">Firma Técnica: #{row.codigoMecanico}</span>
+                                  <span className="text-emerald-500 font-bold">Firma Sello: #{row.codigoMecanico}</span>
                                   {tel && <span className="text-slate-500">• Tel: {tel}</span>}
                                 </div>
                               </div>
@@ -984,12 +1029,12 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                   className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20"
                                 >
                                   <Phone className="w-3 h-3 shrink-0" />
-                                  <span>Consultar Trabajo</span>
+                                  <span>Contactar por WhatsApp</span>
                                   <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
                                 </a>
                               ) : (
                                 <span className="text-[8.5px] text-slate-500 italic px-2.5 py-1.5 bg-slate-900 rounded border border-white/5 text-center">
-                                  WhatsApp no disponible
+                                  WhatsApp no registrado
                                 </span>
                               )}
                             </div>
@@ -1029,10 +1074,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                             historial.forEach((row) => {
                               const cod = row.codigoMecanico || "";
                               if (cod && !uniqueMecsMap[cod]) {
-                                const localMec = localMecanicos.find(
-                                  m => m.codigoMecanico.trim().toLowerCase() === cod.trim().toLowerCase()
-                                );
-                                const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : "");
+                                const tel = getMechanicPhone(row, localMecanicos);
                                 uniqueMecsMap[cod] = {
                                   taller: row.taller,
                                   telefono: tel ? String(tel) : "",
@@ -1132,37 +1174,17 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                   <details className="group border border-white/5 bg-slate-950/40 rounded-xl overflow-hidden">
                     <summary className="cursor-pointer text-[9.5px] font-bold text-slate-400 hover:text-white p-3 flex justify-between items-center select-none bg-slate-950/25">
                       <span className="flex items-center gap-1.5 font-mono uppercase tracking-wider">
-                        <QrCode className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Ver Opciones de Códigos QR (Avanzado)</span>
+                        <QrCode className="w-3.5 h-3.5 text-emerald-500" />
+                        <span>Ver Código QR de Firma Técnica (Avanzado)</span>
                       </span>
                       <span className="text-[8px] opacity-70 transition-transform group-open:rotate-180">▼</span>
                     </summary>
                     <div className="p-3 border-t border-white/5 space-y-4 bg-slate-950/15">
-                      <div className="grid grid-cols-2 gap-2">
-                        {/* QR Comprador */}
-                        <button
-                          onClick={() => {
-                            setShowFaceToFaceQR(!showFaceToFaceQR);
-                            setShowMecanicoQR(false);
-                          }}
-                          className={`p-2.5 rounded-lg border text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
-                            showFaceToFaceQR
-                              ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                              : "bg-slate-900 border-white/5 text-slate-300 hover:bg-slate-900/80"
-                          }`}
-                        >
-                          <QrCode className="w-4 h-4 animate-pulse" />
-                          <div>
-                            <span className="block leading-tight">QR de Venta</span>
-                            <span className="block text-[8px] font-normal text-slate-400 mt-0.5">Comprador presencial</span>
-                          </div>
-                        </button>
-
+                      <div className="flex flex-col items-stretch gap-2">
                         {/* QR Mecánico */}
                         <button
                           onClick={() => {
                             setShowMecanicoQR(!showMecanicoQR);
-                            setShowFaceToFaceQR(false);
                           }}
                           className={`p-2.5 rounded-lg border text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
                             showMecanicoQR
@@ -1170,9 +1192,9 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                               : "bg-slate-900 border-white/5 text-slate-300 hover:bg-slate-900/80"
                           }`}
                         >
-                          <PenTool className="w-4 h-4" />
+                          <PenTool className="w-4 h-4 text-emerald-400" />
                           <div>
-                            <span className="block leading-tight">QR para Mecánico</span>
+                            <span className="block leading-tight text-emerald-400 font-extrabold">QR para Mecánico</span>
                             <span className="block text-[8px] font-normal text-slate-400 mt-0.5">Para firmar en sitio</span>
                           </div>
                         </button>
@@ -1219,23 +1241,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                         </div>
                       </div>
 
-                      {/* RENDER QR COMPRADOR */}
-                      {showFaceToFaceQR && (
-                        <div className="p-3 bg-slate-950 border border-amber-500/10 rounded-lg text-center space-y-2">
-                          <div className="bg-white p-2 rounded-lg inline-block shadow-md">
-                            <img
-                              src={generateQRCodeUrl()}
-                              alt="QR Enlace de Venta"
-                              className="w-36 h-36 block mx-auto"
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-300 leading-tight">
-                            El comprador escanea este código para ver este Certificado Verificado en su celular de inmediato.
-                          </p>
-                        </div>
-                      )}
-
                       {/* RENDER QR MECÁNICO */}
                       {showMecanicoQR && (
                         <div className="p-3 bg-slate-950 border border-emerald-500/10 rounded-lg text-center space-y-2">
@@ -1248,7 +1253,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                             />
                           </div>
                           <p className="text-[10px] text-slate-300 leading-tight">
-                            El mecánico escanea este código para firmar reparaciones del vehículo desde su celular.
+                            El mecánico escanea este código para firmar reparaciones del vehículo desde su celular de forma directa.
                           </p>
                         </div>
                       )}
