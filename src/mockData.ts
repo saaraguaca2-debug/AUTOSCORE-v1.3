@@ -508,17 +508,45 @@ export function simularPostMantenimiento(payload: {
   };
   
   data.historial.push(nuevoHistorial);
+
+  // 4. Analizar semánticamente la descripción del trabajo para incrementar el score
+  const workLower = trabajo.toLowerCase();
+  let puntosGanados = 10; // Incremento base por firma de taller autorizado
+
+  if (workLower.includes("aceite") || workLower.includes("filtro") || workLower.includes("lubricante") || workLower.includes("bujia") || workLower.includes("bujía")) {
+    puntosGanados += 15; // +25 pts por mantenimiento de motor/aceite
+  }
+  if (workLower.includes("freno") || workLower.includes("frenos") || workLower.includes("pastilla") || workLower.includes("disco") || workLower.includes("pastillas")) {
+    puntosGanados += 15; // +25 pts por mantenimiento de frenos
+  }
+  if (workLower.includes("correa") || workLower.includes("distribucion") || workLower.includes("distribución") || workLower.includes("tiempo") || workLower.includes("cadena")) {
+    puntosGanados += 25; // +35 pts por kit de distribución/tiempo
+  }
+  if (workLower.includes("suspension") || workLower.includes("suspensión") || workLower.includes("amortiguador") || workLower.includes("caucho") || workLower.includes("llanta") || workLower.includes("tren")) {
+    puntosGanados += 10; // +20 pts por suspensión/cauchos
+  }
+  if (workLower.includes("general") || workLower.includes("escaner") || workLower.includes("escáner") || workLower.includes("revision") || workLower.includes("revisión") || workLower.includes("mantenimiento")) {
+    puntosGanados += 10; // +20 pts por revisión diagnóstica integral
+  }
+
+  const scorePrevio = data.vehiculos[vehiculoIndex].score || 70;
+  const nuevoScore = Math.min(100, Math.max(50, scorePrevio + puntosGanados));
+  data.vehiculos[vehiculoIndex].score = nuevoScore;
+
   saveSimulatedData(data);
   
   return {
     success: true,
-    message: "¡Mantenimiento verificado registrado exitosamente!",
+    message: `¡Mantenimiento verificado registrado exitosamente! Score aumentado de ${scorePrevio} a ${nuevoScore} pts (+${puntosGanados} pts).`,
     data: {
       idHistorial: newId,
       placa: placa,
       fecha: fechaString,
       mecanico: mecanico.nombre,
-      taller: mecanico.taller
+      taller: mecanico.taller,
+      scorePrevio,
+      nuevoScore,
+      puntosGanados
     }
   };
 }
