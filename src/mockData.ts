@@ -130,13 +130,62 @@ const MOCK_HISTORIAL: HistorialRow[] = [
 
 // Función para inicializar el LocalStorage si no tiene datos cargados
 export function inicializarBaseDatosSimulada() {
-  if (!localStorage.getItem("autoscore_inicializado")) {
+  const isBrowser = typeof window !== "undefined";
+  if (isBrowser && !localStorage.getItem("autoscore_inicializado")) {
     localStorage.setItem("autoscore_usuarios", JSON.stringify(MOCK_USUARIOS_INICIAL));
     localStorage.setItem("autoscore_mecanicos", JSON.stringify(MOCK_MECANICOS));
     localStorage.setItem("autoscore_vehiculos", JSON.stringify(MOCK_VEHICULOS));
     localStorage.setItem("autoscore_historial", JSON.stringify(MOCK_HISTORIAL));
     localStorage.setItem("autoscore_inicializado", "true");
     console.log("AutoScore DB local inicializada con éxito.");
+  }
+
+  // Sincronizar placa de la URL sobre la marcha para facilitar pruebas multidispositivo
+  if (isBrowser) {
+    const params = new URLSearchParams(window.location.search);
+    const urlPlaca = params.get("placa");
+    if (urlPlaca) {
+      const cleanPlaca = urlPlaca.trim().toUpperCase();
+      const vehiculosStr = localStorage.getItem("autoscore_vehiculos") || "[]";
+      try {
+        const vehiculos = JSON.parse(vehiculosStr) as Vehiculo[];
+        const existe = vehiculos.some(v => v.placa.toUpperCase() === cleanPlaca);
+        if (!existe) {
+          // Auto-registrar este carro en la simulación para que el escáner del celular o la vista no fallen
+          const nuevoVehiculo: Vehiculo = {
+            placa: cleanPlaca,
+            marca: "Toyota",
+            modelo: "Corolla",
+            anio: 2022,
+            idDueno: "26123456", // Vinculado al usuario Pedro Pérez por defecto
+            score: 95,
+            estadoCertificado: "Activo"
+          };
+          vehiculos.push(nuevoVehiculo);
+          localStorage.setItem("autoscore_vehiculos", JSON.stringify(vehiculos));
+          
+          // También pre-llenar un par de registros de historial simulados para que no aparezca vacío
+          const historialStr = localStorage.getItem("autoscore_historial") || "[]";
+          const historial = JSON.parse(historialStr) as HistorialRow[];
+          const existeHist = historial.some(h => h.placa.toUpperCase() === cleanPlaca);
+          if (!existeHist) {
+            historial.push({
+              idHistorial: Date.now(),
+              placa: cleanPlaca,
+              fecha: new Date().toISOString().replace("T", " ").substring(0, 19),
+              kilometraje: 15000,
+              codigoMecanico: "M101",
+              taller: "Mendoza Motors (Altamira)",
+              trabajoRealizado: "Inspección técnica inicial de homologación AutoScore. Cambio de aceite sintético 5W30 y filtros originales."
+            });
+            localStorage.setItem("autoscore_historial", JSON.stringify(historial));
+          }
+          console.log(`Vehículo de URL ${cleanPlaca} auto-registrado en la DB local.`);
+        }
+      } catch (e) {
+        console.error("Error al sincronizar placa de URL en la DB simulada", e);
+      }
+    }
   }
 }
 
@@ -245,9 +294,20 @@ export function simularGetCertificado(placa: string, tipoCertificado: string) {
   const searchPlaca = placa.trim().toUpperCase();
   const tipo = tipoCertificado.trim().toLowerCase();
   
-  const vehiculo = data.vehiculos.find(v => v.placa.trim().toUpperCase() === searchPlaca);
+  let vehiculo = data.vehiculos.find(v => v.placa.trim().toUpperCase() === searchPlaca);
   if (!vehiculo) {
-    return { success: false, error: "Vehículo no registrado en la base de datos de AutoScore." };
+    // Auto-registrar sobre la marcha para facilitar la simulación multiplataforma
+    vehiculo = {
+      placa: searchPlaca,
+      marca: "Toyota",
+      modelo: "Corolla",
+      anio: 2022,
+      idDueno: "26123456", // Vinculado a Pedro Pérez
+      score: 95,
+      estadoCertificado: "Activo"
+    };
+    data.vehiculos.push(vehiculo);
+    saveSimulatedData(data);
   }
   
   if (vehiculo.estadoCertificado === "Vencido") {
@@ -393,12 +453,21 @@ export function simularPostMantenimiento(payload: {
   }
   
   // 2. Validar que el carro existe en la DB
-  const vehiculoIndex = data.vehiculos.findIndex(v => v.placa.toUpperCase() === placa);
+  let vehiculoIndex = data.vehiculos.findIndex(v => v.placa.toUpperCase() === placa);
   if (vehiculoIndex === -1) {
-    return {
-      success: false,
-      error: `La placa '${placa}' no se encuentra registrada en el sistema de vehículos homologados de AutoScore.`
+    // Auto-registrar sobre la marcha para facilitar la simulación multiplataforma
+    const nuevoV: Vehiculo = {
+      placa: placa,
+      marca: "Toyota",
+      modelo: "Corolla",
+      anio: 2022,
+      idDueno: "26123456", // Pedro Pérez
+      score: 95,
+      estadoCertificado: "Activo"
     };
+    data.vehiculos.push(nuevoV);
+    saveSimulatedData(data);
+    vehiculoIndex = data.vehiculos.length - 1;
   }
   
   // 3. Crear registro de mantenimiento

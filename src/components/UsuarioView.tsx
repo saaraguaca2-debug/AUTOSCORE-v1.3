@@ -614,15 +614,17 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     if (!selectedCar || historial.length === 0) return;
     
     // Obtener lista única de mecánicos/talleres del historial
-    const uniqueMecsMap: { [key: string]: { taller: string, telefono: string, codigo: string } } = {};
+    const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
     const localMecanicos = getSimulatedData().mecanicos;
 
     historial.forEach((row) => {
       const cod = row.codigoMecanico || "";
       if (cod && !uniqueMecsMap[cod]) {
         const tel = getMechanicPhone(row, localMecanicos);
+        const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
         uniqueMecsMap[cod] = {
           taller: row.taller,
+          nombre: foundM ? foundM.nombre : "Técnico Certificado",
           telefono: tel ? String(tel) : "",
           codigo: cod
         };
@@ -631,7 +633,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
     const listStr = Object.values(uniqueMecsMap).map(m => {
       const waLink = m.telefono ? `https://wa.me/${formatWhatsAppNumber(m.telefono)}` : "WhatsApp no configurado";
-      return `- Taller: ${m.taller} (Firma: #${m.codigo}) | WhatsApp: ${m.telefono ? `+${formatWhatsAppNumber(m.telefono)} (${waLink})` : "No registrado"}`;
+      const maskedSeal = m.codigo ? String(m.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+      return `- Taller: ${m.taller} | Mecánico: ${m.nombre} (Sello Digital: #${maskedSeal}) | WhatsApp: ${m.telefono ? `+${formatWhatsAppNumber(m.telefono)} (${waLink})` : "No registrado"}`;
     }).join("\n");
 
     const text = `Trazabilidad Oficial de Reparaciones Autorizadas - AutoScore v1.3\nVehículo: ${selectedCar.marca} ${selectedCar.modelo} (Placa: ${selectedCar.placa})\nScore de Salud: ${selectedCar.score}/100\n\nMecánicos Firmantes Certificados:\n${listStr}\n\nVerificado digitalmente en la plataforma AutoScore.`;
@@ -663,7 +666,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
       publicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=000000&data=${encodeURIComponent(publicLink)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=600x600&color=000000&ecc=H&data=${encodeURIComponent(publicLink)}`;
   };
 
   // URL del QR para firma de mecánicos
@@ -674,7 +677,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
       mechanicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
-    return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&color=000000&data=${encodeURIComponent(mechanicLink)}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=600x600&color=000000&ecc=H&data=${encodeURIComponent(mechanicLink)}`;
   };
 
   return (
@@ -1097,11 +1100,11 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                   </div>
                   
                   <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/40 p-3 rounded-xl border border-emerald-500/10">
-                    <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
+                    <div className="bg-white p-2.5 rounded-xl shrink-0 shadow-md">
                       <img
                         src={generateMecanicoQRCodeUrl()}
                         alt="QR Firma Técnico"
-                        className="w-20 h-20 block"
+                        className="w-28 h-28 block"
                         referrerPolicy="no-referrer"
                       />
                     </div>
@@ -1133,6 +1136,11 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                         const tel = row.telefonoMecanico || "";
                         const formattedTel = formatWhatsAppNumber(tel);
                         
+                        const localMecanicos = getSimulatedData().mecanicos;
+                        const foundMec = localMecanicos.find(m => m.codigoMecanico === row.codigoMecanico);
+                        const nombreMec = foundMec ? foundMec.nombre : "Técnico Certificado";
+                        const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+
                         // Mensaje personalizado de corroboración para compradores interesados
                         const textMsg = `Hola ${row.taller || "Taller"}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
 
@@ -1155,6 +1163,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                   setActiveTecnicoModal({
                                     taller: row.taller,
                                     codigo: row.codigoMecanico,
+                                    nombreMecanico: nombreMec,
                                     telefono: tel,
                                     fecha: row.fecha,
                                     kilometraje: row.kilometraje,
@@ -1179,6 +1188,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                       setActiveTecnicoModal({
                                         taller: row.taller,
                                         codigo: row.codigoMecanico,
+                                        nombreMecanico: nombreMec,
                                         telefono: tel,
                                         fecha: row.fecha,
                                         kilometraje: row.kilometraje,
@@ -1191,7 +1201,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                   </button>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 font-mono">
-                                  <span className="text-emerald-500 font-bold">Firma Sello: #{row.codigoMecanico}</span>
+                                  <span className="text-emerald-500 font-bold">Mecánico: {nombreMec}</span>
+                                  <span className="text-slate-500">• Sello Digital: #{maskedCode}</span>
                                   {tel && <span className="text-slate-500">• Tel: {tel}</span>}
                                 </div>
                               </div>
@@ -1247,15 +1258,17 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
                         <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                           {(() => {
-                            const uniqueMecsMap: { [key: string]: { taller: string, telefono: string, codigo: string } } = {};
+                            const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
                             const localMecanicos = getSimulatedData().mecanicos;
 
                             historial.forEach((row) => {
                               const cod = row.codigoMecanico || "";
                               if (cod && !uniqueMecsMap[cod]) {
                                 const tel = getMechanicPhone(row, localMecanicos);
+                                const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
                                 uniqueMecsMap[cod] = {
                                   taller: row.taller,
+                                  nombre: foundM ? foundM.nombre : "Técnico Certificado",
                                   telefono: tel ? String(tel) : "",
                                   codigo: cod
                                 };
@@ -1264,20 +1277,22 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
                             return Object.values(uniqueMecsMap).map((mec, index) => {
                               const cleanedPhone = formatWhatsAppNumber(mec.telefono);
-                              const textMsg = `Hola ${mec.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y en la plataforma de AutoScore aparece registrado que ustedes firmaron su mantenimiento con código de sello #${mec.codigo}. ¿Podrían confirmarme la validez de estos trabajos en su taller? Muchas gracias.`;
+                              const maskedSeal = mec.codigo ? String(mec.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+                              const textMsg = `Hola ${mec.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y en la plataforma de AutoScore aparece registrado que ustedes firmaron su mantenimiento con sello digital #${maskedSeal}. ¿Podrían confirmarme la validez de estos trabajos en su taller? Muchas gracias.`;
                               
                               return (
                                 <div key={index} className="flex items-center justify-between p-2 bg-slate-950/80 border border-white/5 rounded-xl text-xs">
                                   <div>
                                     <span className="font-extrabold text-white block truncate max-w-[150px]">{mec.taller}</span>
-                                    <span className="text-[9px] text-slate-500 font-mono">Sello Digital: #{mec.codigo}</span>
+                                    <span className="text-[9px] text-slate-400 block font-mono">Mecánico: {mec.nombre}</span>
+                                    <span className="text-[8px] text-slate-500 font-mono block">Sello Digital: #{maskedSeal}</span>
                                   </div>
                                   
                                   {(() => {
                                     const hasPhone = !!mec.telefono;
                                     const finalPhone = hasPhone ? cleanedPhone : formatWhatsAppNumber(adminPhoneEnv);
                                     const targetName = hasPhone ? mec.taller : "Soporte / Administrador";
-                                    const customTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y en la plataforma de AutoScore aparece registrado que el taller "${mec.taller}" firmó su mantenimiento con código de sello #${mec.codigo}. ¿Podrían confirmarme la validez de estos trabajos? Muchas gracias.`;
+                                    const customTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y en la plataforma de AutoScore aparece registrado que el taller "${mec.taller}" firmó su mantenimiento con sello digital #${maskedSeal}. ¿Podrían confirmarme la validez de estos trabajos? Muchas gracias.`;
                                     
                                     return (
                                       <a
@@ -1428,11 +1443,11 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                       {/* RENDER QR MECÁNICO */}
                       {showMecanicoQR && (
                         <div className="p-3 bg-slate-950 border border-emerald-500/10 rounded-lg text-center space-y-2">
-                          <div className="bg-white p-2 rounded-lg inline-block shadow-md">
+                          <div className="bg-white p-3 rounded-xl inline-block shadow-lg border border-emerald-500/10">
                             <img
                               src={generateMecanicoQRCodeUrl()}
                               alt="QR Firma Técnico"
-                              className="w-36 h-36 block mx-auto"
+                              className="w-52 h-52 block mx-auto"
                               referrerPolicy="no-referrer"
                             />
                           </div>
@@ -1486,7 +1501,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                 <Shield className="w-6 h-6" />
               </div>
               <h4 className="text-base font-display font-extrabold text-white">Taller Firmante Autorizado</h4>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Sello Digital: #{activeTecnicoModal.codigo}</p>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Sello Digital: #{activeTecnicoModal.codigo ? String(activeTecnicoModal.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : ""}</p>
+              {activeTecnicoModal.nombreMecanico && (
+                <p className="text-[10px] text-emerald-400 font-mono mt-0.5">Mecánico: {activeTecnicoModal.nombreMecanico}</p>
+              )}
             </div>
 
             <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
@@ -1497,7 +1515,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                   "{activeTecnicoModal.trabajo}"
                 </p>
               </div>
-              <div className="pt-2 border-t border-white/5 mt-2 mt-2 flex flex-col sm:flex-row justify-between items-start gap-2 text-[10px]">
+              <div className="pt-2 border-t border-white/5 mt-2 flex flex-col sm:flex-row justify-between items-start gap-2 text-[10px]">
                 <div>Fecha: <span className="text-white block font-mono">{activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""}</span></div>
                 <div>Kilometraje: <span className="text-white block font-mono">{activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km</span></div>
               </div>
@@ -1509,8 +1527,9 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
               const finalModalPhone = modalTel ? formatWhatsAppNumber(modalTel) : formatWhatsAppNumber(adminPhoneEnv);
               const isFallback = !modalTel;
               
+              const maskedCode = activeTecnicoModal.codigo ? String(activeTecnicoModal.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
               const tallerName = isFallback ? "Soporte Técnico" : (activeTecnicoModal.taller || "Taller");
-              const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${activeTecnicoModal.taller || "Taller"}" con código de sello #${activeTecnicoModal.codigo || ""} el día ${activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""} con ${activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km ("${activeTecnicoModal.trabajo || ""}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
+              const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${activeTecnicoModal.taller || "Taller"}" con sello digital #${maskedCode} el día ${activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""} con ${activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km ("${activeTecnicoModal.trabajo || ""}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
               
               return (
                 <a

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import jsQR from "jsqr";
 import { 
   PenTool, Shield, QrCode, AlertCircle, RefreshCw, Key, Camera, Gauge, CheckCircle2,
   Lock, ArrowRight, CornerDownLeft, Sparkles, AlertTriangle, MonitorPlay, Check, PlusCircle,
@@ -206,7 +207,84 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     setFormError(null);
   };
 
-  // Simulación de escaneo visual con cámara
+  // Bucle de escaneo de QR en tiempo real usando jsQR
+  useEffect(() => {
+    let active = true;
+    let animationFrameId: number;
+
+    const scan = () => {
+      if (!active || !cameraActive || scanMethod !== "camera") return;
+
+      const video = videoRef.current;
+      if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
+        let canvas = document.getElementById("qr-canvas") as HTMLCanvasElement | null;
+        if (!canvas) {
+          canvas = document.createElement("canvas");
+          canvas.id = "qr-canvas";
+        }
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          
+          try {
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: "dontInvert",
+            });
+
+            if (code && code.data) {
+              console.log("¡Código QR detectado!", code.data);
+              let detectedPlaca = code.data.trim();
+              
+              // Intentar extraer la placa si es un enlace completo
+              try {
+                if (code.data.includes("?") && (code.data.startsWith("http://") || code.data.startsWith("https://") || code.data.includes("placa="))) {
+                  let searchStr = code.data;
+                  if (!code.data.startsWith("http")) {
+                    searchStr = "http://dummy.com/" + (code.data.startsWith("?") ? code.data : "?" + code.data);
+                  }
+                  const urlObj = new URL(searchStr);
+                  const p = urlObj.searchParams.get("placa");
+                  if (p) {
+                    detectedPlaca = p;
+                  }
+                }
+              } catch (e) {
+                // Usar original
+              }
+
+              if (detectedPlaca) {
+                handleSimularScan(detectedPlaca.toUpperCase());
+                active = false;
+                return;
+              }
+            }
+          } catch (err) {
+            console.error("Error al procesar jsQR:", err);
+          }
+        }
+      }
+
+      if (active) {
+        animationFrameId = requestAnimationFrame(scan);
+      }
+    };
+
+    if (cameraActive && scanMethod === "camera") {
+      animationFrameId = requestAnimationFrame(scan);
+    }
+
+    return () => {
+      active = false;
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [cameraActive, scanMethod]);
+
+  // Simulación de escaneo visual con cámara / Captura rápida
   const triggerCameraScanResult = () => {
     // Si están usando la cámara, simulamos leer un código exitosamente tras un parpadeo de luces
     if (cameraActive) {
@@ -215,12 +293,12 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
       const lastSelected = localStorage.getItem("autoscore_last_selected_placa");
       const data = getSimulatedData();
       
-      const placaElegida = urlPlaca || lastSelected || data.vehiculos[0]?.placa || "AB123CD";
+      const placaElegida = urlPlaca || lastSelected || placa || (data.vehiculos.length > 0 ? data.vehiculos[0].placa : "XYZ567");
       
       // Animación de escaneo
       setTimeout(() => {
         handleSimularScan(placaElegida);
-      }, 1500);
+      }, 1000);
     }
   };
 
@@ -497,7 +575,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                       type="text"
                       required
                       maxLength={10}
-                      placeholder="Ej: AB123CD"
+                      placeholder="Ej: XYZ567"
                       value={placa}
                       onChange={(e) => setPlaca(e.target.value.toUpperCase())}
                       className="flex-1 glass-input rounded-xl px-4 py-2.5 text-sm font-mono font-bold tracking-widest text-amber-400 placeholder-slate-500 focus:outline-none focus:border-amber-500"
@@ -801,7 +879,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                       <input
                         type="text"
                         required
-                        placeholder="Ej: AB123CD"
+                        placeholder="Ej: XYZ567"
                         value={inspPlaca}
                         onChange={(e) => setInspPlaca(e.target.value.toUpperCase())}
                         className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-amber-400 font-mono font-bold uppercase focus:outline-none focus:border-amber-500"
@@ -1120,7 +1198,18 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
 
             {/* MÉTODO 2: ESCÁNER CON VIDEO DE CÁMARA REAL */}
             {scanMethod === "camera" && (
-              <div className="space-y-4">
+              <div className="space-y-3">
+                {/* Nota educativa de integración */}
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left space-y-1">
+                  <div className="flex items-center gap-1.5 text-amber-400">
+                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-[10px] font-bold font-display uppercase tracking-wider">Lectura Precisa QR</span>
+                  </div>
+                  <p className="text-[9px] text-slate-300 leading-normal">
+                    Para vincular el taller, <strong>escanea el código QR de la pantalla del dueño usando la cámara de tu celular</strong>. Esto abrirá automáticamente el panel del taller con todos los datos y la placa listos para firmar.
+                  </p>
+                </div>
+
                 {cameraError ? (
                   <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-xl text-[11px] text-red-400 text-center leading-relaxed">
                     <AlertTriangle className="w-5 h-5 mx-auto mb-1 text-red-500" />
