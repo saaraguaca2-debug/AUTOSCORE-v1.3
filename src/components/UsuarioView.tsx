@@ -67,6 +67,13 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     localStorage.setItem("autoscore_base_url_override", baseUrlOverride);
   }, [baseUrlOverride]);
 
+  // Persistir la placa seleccionada en localStorage para sincronización entre vistas
+  useEffect(() => {
+    if (selectedCar && selectedCar.placa) {
+      localStorage.setItem("autoscore_last_selected_placa", selectedCar.placa);
+    }
+  }, [selectedCar]);
+
   // Registro de vehículo
   const [mostrarFormCar, setMostrarFormCar] = useState(false);
   const [newPlaca, setNewPlaca] = useState("");
@@ -378,11 +385,27 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     }
   };
 
+  // Limpiar base URL de cualquier query string (?placa=...) o barra diagonal para evitar duplicación de parámetros o URLs rotas
+  const getCleanBaseAndPath = () => {
+    const rawBase = baseUrlOverride || window.location.origin;
+    // Eliminar parámetros de búsqueda que puedan haberse copiado por accidente (ej. ?placa=AB123CD)
+    let base = rawBase.split("?")[0];
+    // Quitar barras diagonales al final de la URL base
+    while (base.endsWith("/")) {
+      base = base.slice(0, -1);
+    }
+    let path = window.location.pathname;
+    if (!path.startsWith("/")) {
+      path = "/" + path;
+    }
+    return `${base}${path}`;
+  };
+
   // Obtener Enlace Digital de Certificado Completo
   const getPublicShareUrl = () => {
     if (!selectedCar) return "";
-    const base = baseUrlOverride || window.location.origin;
-    let path = `${base}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
+    const basePath = getCleanBaseAndPath();
+    let path = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
     if (appScriptUrl) {
       path += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
@@ -635,8 +658,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // URL del QR de certificación interactivo cara a cara
   const generateQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const base = baseUrlOverride || window.location.origin;
-    let publicLink = `${base}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
+    const basePath = getCleanBaseAndPath();
+    let publicLink = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
     if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
       publicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
@@ -646,8 +669,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // URL del QR para firma de mecánicos
   const generateMecanicoQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const base = baseUrlOverride || window.location.origin;
-    let mechanicLink = `${base}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}`;
+    const basePath = getCleanBaseAndPath();
+    let mechanicLink = `${basePath}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}`;
     if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
       mechanicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }

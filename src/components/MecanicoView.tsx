@@ -68,13 +68,15 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     }
   }, [showScanner, scanMethod]);
 
-  // Pre-llenar la placa automáticamente si se pasa por parámetro URL (QR de Técnico)
+  // Pre-llenar la placa automáticamente si se pasa por parámetro URL (QR de Técnico) o desde el último carro del garage
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlPlaca = params.get("placa");
-    if (urlPlaca) {
-      setPlaca(urlPlaca.toUpperCase());
-      setInspPlaca(urlPlaca.toUpperCase());
+    const lastSelected = localStorage.getItem("autoscore_last_selected_placa");
+    const targetPlaca = urlPlaca || lastSelected;
+    if (targetPlaca) {
+      setPlaca(targetPlaca.toUpperCase());
+      setInspPlaca(targetPlaca.toUpperCase());
     }
   }, []);
 
@@ -208,9 +210,12 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
   const triggerCameraScanResult = () => {
     // Si están usando la cámara, simulamos leer un código exitosamente tras un parpadeo de luces
     if (cameraActive) {
-      // Tomamos el primer carro disponible o uno de ejemplo
+      const params = new URLSearchParams(window.location.search);
+      const urlPlaca = params.get("placa");
+      const lastSelected = localStorage.getItem("autoscore_last_selected_placa");
       const data = getSimulatedData();
-      const placaElegida = data.vehiculos[0]?.placa || "AB123CD";
+      
+      const placaElegida = urlPlaca || lastSelected || data.vehiculos[0]?.placa || "AB123CD";
       
       // Animación de escaneo
       setTimeout(() => {
@@ -1065,6 +1070,23 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                 <p className="text-[11px] text-slate-400 leading-relaxed text-center mb-1">
                   Haz clic en cualquiera de las siguientes placas detectadas por infrarrojo o QR para rellenar automáticamente el campo del vehículo:
                 </p>
+
+                {/* Atajo de placa seleccionada en el Garage */}
+                {typeof window !== "undefined" && localStorage.getItem("autoscore_last_selected_placa") && (
+                  <div className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl text-center mb-1 animate-pulse">
+                    <span className="block text-[9px] text-amber-400 uppercase font-bold tracking-wider mb-1">
+                      🚘 VEHÍCULO DETECTADO EN GARAGE
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleSimularScan(localStorage.getItem("autoscore_last_selected_placa") || "")}
+                      className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-1.5 px-3 rounded-lg text-xs font-mono tracking-widest transition-all active:scale-[0.98]"
+                    >
+                      {localStorage.getItem("autoscore_last_selected_placa")?.toUpperCase()} (CONFIRMAR ESCANEO)
+                    </button>
+                  </div>
+                )}
+
                 <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
                   {carrosExistentes.length === 0 ? (
                     <div className="text-center py-4 text-xs text-slate-500 font-mono">
