@@ -36,7 +36,7 @@ export default function BaseDatosToggle({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
           <span className="font-display font-bold text-sm tracking-wider text-slate-200">
-            AUTOSCORE <span className="text-amber-500 text-xs font-mono font-normal">v1.2</span>
+            AUTOSCORE <span className="text-amber-500 text-xs font-mono font-normal">v1.3</span>
           </span>
         </div>
 

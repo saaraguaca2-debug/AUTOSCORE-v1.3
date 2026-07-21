@@ -8,8 +8,17 @@ import {
 import { Vehiculo, HistorialRow } from "../types";
 import { 
   simularGetPorDueno, simularGetCertificado, simularRegistrarVehiculo, 
-  simularLogin, simularRegistroUsuario 
+  simularLogin, simularRegistroUsuario, getSimulatedData
 } from "../mockData";
+
+// Decodificador seguro para prevenir fallas fatales (URI Malformed) en navegadores móviles
+function safeDecodeURIComponent(str: string): string {
+  try {
+    return decodeURIComponent(str);
+  } catch (e) {
+    return str;
+  }
+}
 
 interface UsuarioViewProps {
   useSimulado: boolean;
@@ -70,7 +79,15 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     setLoading(true);
     setError(null);
     try {
-      if (useSimulado) {
+      const params = new URLSearchParams(window.location.search);
+      const urlSimulado = params.get("simulado");
+      const urlApi = params.get("api");
+      
+      // FALLBACK SÓLIDO PARA EVITAR CONDICIÓN DE CARRERA DE ESTADOS DE REACT
+      const isSimulado = urlSimulado !== null ? urlSimulado === "true" : useSimulado;
+      const apiUr = urlApi ? safeDecodeURIComponent(urlApi) : appScriptUrl;
+
+      if (isSimulado) {
         const res = simularGetCertificado(placa, tipo);
         if (res.success) {
           setSelectedCar(res.vehiculo);
@@ -81,10 +98,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
           setError(res.error || "No se pudo recuperar el certificado.");
         }
       } else {
-        if (!appScriptUrl) {
+        if (!apiUr) {
           throw new Error("Debe configurar la URL del Google Sheets Apps Script.");
         }
-        const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
+        const fetchUrl = `${apiUr}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
         const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
         if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
         const result = await response.json();
@@ -348,7 +365,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // Copiar Enlace Digital para WhatsApp o Marketplace
   const copyPublicLink = () => {
     if (!selectedCar) return;
-    const path = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo`;
+    const path = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
     navigator.clipboard.writeText(path);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -369,14 +386,14 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // URL del QR de certificación interactivo cara a cara
   const generateQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const publicLink = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo`;
+    const publicLink = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(publicLink)}`;
   };
 
   // URL del QR para firma de mecánicos
   const generateMecanicoQRCodeUrl = () => {
     if (!selectedCar) return "";
-    const mechanicLink = `${window.location.origin}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}`;
+    const mechanicLink = `${window.location.origin}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}&api=${encodeURIComponent(appScriptUrl)}`;
     return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(mechanicLink)}`;
   };
 
@@ -834,22 +851,31 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                       {historial.map((row, idx) => (
                         <div key={idx} className="border-l-2 border-amber-500 pl-3 py-1 relative">
                           <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                            <span>{row.fecha.split(" ")[0]}</span>
-                            <span className="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded">{row.kilometraje.toLocaleString()} km</span>
+                            <span>{row.fecha ? row.fecha.split(" ")[0] : ""}</span>
+                            <span className="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded">{row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km</span>
                           </div>
                           <p className="text-xs text-slate-200 mt-1 leading-normal font-light">{row.trabajoRealizado}</p>
                           
                           {/* Botón de Trazabilidad Clicable (Taller verde) */}
                           <div className="mt-2 flex justify-between items-center">
                             <button
-                              onClick={() => setActiveTecnicoModal({
-                                taller: row.taller,
-                                codigo: row.codigoMecanico,
-                                telefono: row.telefonoMecanico,
-                                fecha: row.fecha,
-                                kilometraje: row.kilometraje,
-                                trabajo: row.trabajoRealizado
-                              })}
+                              onClick={() => {
+                                // Buscar de forma segura en la DB local como fallback si no viene de Sheets
+                                const localMecanicos = getSimulatedData().mecanicos;
+                                const localMec = localMecanicos.find(
+                                  m => m.codigoMecanico.trim().toLowerCase() === row.codigoMecanico?.trim().toLowerCase()
+                                );
+                                const tel = row.telefonoMecanico || (row as any).telefono || (localMec ? localMec.telefono : undefined);
+                                
+                                setActiveTecnicoModal({
+                                  taller: row.taller,
+                                  codigo: row.codigoMecanico,
+                                  telefono: tel,
+                                  fecha: row.fecha,
+                                  kilometraje: row.kilometraje,
+                                  trabajo: row.trabajoRealizado
+                                });
+                              }}
                               className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 transition-all flex items-center gap-1"
                             >
                               <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
@@ -963,13 +989,24 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
               )}
 
               {/* Botón Imprimir / Guardar en PDF para dueño */}
-              <button
-                onClick={() => window.print()}
-                className="w-full bg-slate-950 hover:bg-slate-900 border border-white/5 py-3 rounded-2xl text-xs text-slate-300 hover:text-white font-bold text-center flex items-center justify-center gap-2 no-print shadow-md"
-              >
-                <Download className="w-4.5 h-4.5" />
-                <span>Imprimir / Descargar en PDF</span>
-              </button>
+              <div className="space-y-2.5 no-print">
+                <button
+                  onClick={() => window.print()}
+                  className="w-full bg-slate-950 hover:bg-slate-900 border border-white/5 py-3 rounded-2xl text-xs text-slate-300 hover:text-white font-bold text-center flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]"
+                >
+                  <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
+                  <span>Imprimir / Descargar en PDF</span>
+                </button>
+                
+                {typeof window !== "undefined" && window.self !== window.top && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">⚠️ Restricción de Vista Previa</span>
+                    <p className="text-[9.5px] text-slate-300 leading-normal mt-1">
+                      El botón de impresión está bloqueado por la seguridad del visualizador de AI Studio. Haz clic en el botón <strong className="text-white">"Abrir en nueva pestaña"</strong> arriba a la derecha para ver la app en pantalla completa y poder descargar tu PDF.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1002,9 +1039,9 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                   "{activeTecnicoModal.trabajo}"
                 </p>
               </div>
-              <div className="pt-2 border-t border-white/5 mt-2 grid grid-cols-2 gap-2 text-[10px]">
-                <div>Fecha: <span className="text-white block font-mono">{activeTecnicoModal.fecha.split(" ")[0]}</span></div>
-                <div>Kilometraje: <span className="text-white block font-mono">{activeTecnicoModal.kilometraje.toLocaleString()} km</span></div>
+              <div className="pt-2 border-t border-white/5 mt-2 mt-2 flex flex-col sm:flex-row justify-between items-start gap-2 text-[10px]">
+                <div>Fecha: <span className="text-white block font-mono">{activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""}</span></div>
+                <div>Kilometraje: <span className="text-white block font-mono">{activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km</span></div>
               </div>
             </div>
 

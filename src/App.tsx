@@ -16,6 +16,15 @@ import MecanicoView from "./components/MecanicoView";
 import SoporteView from "./components/SoporteView";
 import AdminView from "./components/AdminView";
 
+// Decodificador seguro para prevenir fallas fatales (URI Malformed) en navegadores móviles
+function safeDecodeURIComponent(str: string): string {
+  try {
+    return decodeURIComponent(str);
+  } catch (e) {
+    return str;
+  }
+}
+
 export default function App() {
   // Inicializar base de datos de simulación al montar la aplicación
   useEffect(() => {
@@ -55,6 +64,17 @@ export default function App() {
   // Detectar parámetros de la URL para enrutamiento automático en el arranque (QR / Links Públicos)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    
+    // Auto-configurar base de datos si viene en la URL (importante para que el escáner QR del celular funcione igual que la PC)
+    const urlSimulado = params.get("simulado");
+    if (urlSimulado !== null) {
+      setUseSimulado(urlSimulado === "true");
+    }
+    const urlApi = params.get("api");
+    if (urlApi) {
+      setAppScriptUrl(safeDecodeURIComponent(urlApi));
+    }
+
     if (params.get("placa")) {
       const vistaParam = params.get("vista");
       if (vistaParam === "mecanico") {

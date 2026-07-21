@@ -335,9 +335,9 @@ function doGet(e) {
           const rM = mecD.slice(1);
           for (let m = 0; m < rM.length; m++) {
             const rowM = rM[m];
-            const code = getRowValue(rowM, hM, "CodigoMecanico");
+            const code = getRowValue(rowM, hM, "CodigoMecanico").toString().trim().toLowerCase();
             mecMap[code] = {
-              telefono: getRowValue(rowM, hM, "Telefono"),
+              telefono: getRowValue(rowM, hM, "Telefono") || getRowValue(rowM, hM, "Celular") || getRowValue(rowM, hM, "WhatsApp") || getRowValue(rowM, hM, "Movil") || getRowValue(rowM, hM, "Contacto"),
               taller: getRowValue(rowM, hM, "Taller")
             };
           }
@@ -362,8 +362,9 @@ function doGet(e) {
             
             // Cruzar teléfono de mecánico SOLO si es tipo completo (Certificado Premium)
             if (tipoCertificado === "completo") {
-              if (mecMap[codMec]) {
-                item.telefonoMecanico = mecMap[codMec].telefono;
+              const normalizedCodMec = codMec.toString().trim().toLowerCase();
+              if (mecMap[normalizedCodMec]) {
+                item.telefonoMecanico = mecMap[normalizedCodMec].telefono;
               }
             }
             
