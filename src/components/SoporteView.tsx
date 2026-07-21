@@ -104,7 +104,8 @@ export default function SoporteView({ onNavigate }: SoporteViewProps) {
               <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">CodigoMecanico</code>,{" "}
               <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">Nombre</code>,{" "}
               <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">Taller</code>,{" "}
-              <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">Estado</code>
+              <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">Estado</code>,{" "}
+              <code className="text-white bg-black/40 px-1 py-0.5 rounded border border-white/5">Telefono</code>
             </div>
 
             <div className="p-2.5 bg-black/30 border border-white/5 rounded-xl">

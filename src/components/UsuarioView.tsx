@@ -119,7 +119,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const result = await response.json();
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
-          setHistorial(result.historial || []);
+          setHistorial(normalizeHistorial(result.historial || []));
           setActiveCertType(tipo);
           setViewMode("certificado");
         } else {
@@ -260,7 +260,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const res = simularGetCertificado(veh.placa, tipo);
         if (res.success) {
           setSelectedCar(res.vehiculo);
-          setHistorial(res.historial || []);
+          setHistorial(normalizeHistorial(res.historial || []));
           setViewMode("certificado");
         } else {
           setError(res.error || "No se pudo recuperar el certificado.");
@@ -273,7 +273,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const result = await response.json();
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
-          setHistorial(result.historial || []);
+          setHistorial(normalizeHistorial(result.historial || []));
           setViewMode("certificado");
         } else {
           setError(result.error || "No se encontró el certificado.");
@@ -402,16 +402,32 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   const formatWhatsAppNumber = (phone: string): string => {
     let cleaned = String(phone).replace(/[^0-9]/g, "");
     if (!cleaned) return "";
+    
+    // Si empieza con 0, quitarlo (ej: 04141234567 -> 4141234567)
     if (cleaned.startsWith("0")) {
       cleaned = cleaned.substring(1);
     }
-    // Autocompletar código de país de Venezuela (58) si no lo tiene
-    if (cleaned.length === 10 && (cleaned.startsWith("414") || cleaned.startsWith("424") || cleaned.startsWith("412") || cleaned.startsWith("416") || cleaned.startsWith("426"))) {
+    
+    // Si ya empieza con 58 (código país de Venezuela) y tiene 12 dígitos, es perfecto
+    if (cleaned.startsWith("58") && cleaned.length === 12) {
+      return cleaned;
+    }
+    
+    // Autocompletar código de país de Venezuela (58) si no lo tiene y empieza con prefijos comunes
+    const prefijosComunes = ["414", "424", "412", "416", "426"];
+    const startsWithPrefijo = prefijosComunes.some(p => cleaned.startsWith(p));
+    
+    if (startsWithPrefijo) {
+      if (cleaned.length === 10 || cleaned.length === 9) {
+        cleaned = "58" + cleaned;
+      }
+    }
+    
+    // Si la longitud es 10 y no empieza con 58 (por ejemplo, 4141234567), anteponer 58
+    if (cleaned.length === 10 && !cleaned.startsWith("58")) {
       cleaned = "58" + cleaned;
     }
-    if (cleaned.length === 9 && (cleaned.startsWith("414") || cleaned.startsWith("424") || cleaned.startsWith("412") || cleaned.startsWith("416") || cleaned.startsWith("426"))) {
-      cleaned = "58" + cleaned;
-    }
+    
     return cleaned;
   };
 
@@ -419,13 +435,15 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   const getMechanicPhone = (row: any, localMecs: any[]): string => {
     if (!row) return "";
     
-    // 1. Intentar buscar en las columnas comunes que podrían venir desde Google Sheets (con varias ortografías y mayúsculas/minúsculas)
+    // 1. Intentar buscar en las columnas comunes que podrían venir desde Google Sheets (con varias ortografías, mayúsculas/minúsculas, "whatsapp", "celular", etc.)
     const keys = [
-      "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec",
-      "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone"
+      "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec", "telefono_mec",
+      "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone",
+      "wassap", "Wassap", "WASSAP", "whatsapp", "WhatsApp", "WHATSAPP", "wasa", "Wasa",
+      "celular", "Celular", "cel", "Cel", "contacto", "Contacto", "movil", "Movil", "móvil", "Móvil"
     ];
     for (const key of keys) {
-      if (row[key] && String(row[key]).trim()) {
+      if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
         return String(row[key]).trim();
       }
     }
@@ -437,12 +455,133 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
       const match = localMecs.find(
         m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
       );
-      if (match && match.telefono) {
-        return String(match.telefono).trim();
+      if (match) {
+        // Buscar teléfono en cualquier propiedad posible del mecánico encontrado
+        for (const key of keys) {
+          if (match[key] !== undefined && match[key] !== null && String(match[key]).trim()) {
+            return String(match[key]).trim();
+          }
+        }
+        if (match.telefono) {
+          return String(match.telefono).trim();
+        }
       }
     }
     
     return "";
+  };
+
+  // Normalizar de forma ultra robusta los registros de historial para que sus campos siempre coincidan con las expectativas de la UI
+  const normalizeHistorial = (rawHistorial: any[]): HistorialRow[] => {
+    if (!Array.isArray(rawHistorial)) return [];
+    return rawHistorial.map((row) => {
+      const normalized: any = { ...row };
+      
+      // 1. Encontrar el código de mecánico
+      const codeKeys = [
+        "codigoMecanico", "codigomecanico", "codigo_mecanico", "codigoMec", 
+        "codigo_mec", "codigo", "cod", "mecanico", "mecanicoCodigo", 
+        "idMecanico", "id_mecanico", "idmecanico", "firma", "sello"
+      ];
+      for (const key of codeKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.codigoMecanico = String(row[key]).trim();
+          break;
+        }
+      }
+      
+      // 2. Encontrar el taller
+      const tallerKeys = [
+        "taller", "nombretaller", "nombre_taller", "taller_mecanico", "establecimiento", "empresa"
+      ];
+      for (const key of tallerKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.taller = String(row[key]).trim();
+          break;
+        }
+      }
+
+      // 3. Encontrar la fecha
+      const fechaKeys = [
+        "fecha", "fecha_servicio", "fechaServicio", "dia", "date", "createdat"
+      ];
+      for (const key of fechaKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.fecha = String(row[key]).trim();
+          break;
+        }
+      }
+
+      // 4. Encontrar el kilometraje
+      const kmKeys = [
+        "kilometraje", "km", "kilómetros", "kilometros", "kms", "odometro", "odómetro"
+      ];
+      for (const key of kmKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.kilometraje = Number(String(row[key]).replace(/[^0-9]/g, "")) || 0;
+          break;
+        }
+      }
+
+      // 5. Encontrar el trabajo realizado
+      const trabajoKeys = [
+        "trabajoRealizado", "trabajo_realizado", "trabajorealizado", "trabajo", "descripcion", "servicio", "mantenimiento"
+      ];
+      for (const key of trabajoKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.trabajoRealizado = String(row[key]).trim();
+          break;
+        }
+      }
+
+      // 6. Encontrar el teléfono del mecánico si viniera en el historial
+      const telKeys = [
+        "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec",
+        "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone",
+        "wassap", "Wassap", "WASSAP", "whatsapp", "WhatsApp", "WHATSAPP", "wasa", "Wasa"
+      ];
+      for (const key of telKeys) {
+        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+          normalized.telefonoMecanico = String(row[key]).trim();
+          break;
+        }
+      }
+
+      // 7. Si no viene directo, buscar por CodigoMecanico en el listado de mecánicos locales para hidratarlo de forma ultra segura
+      if (!normalized.telefonoMecanico && normalized.codigoMecanico) {
+        try {
+          const localMecs = getSimulatedData().mecanicos;
+          const cleanCode = String(normalized.codigoMecanico).trim().toLowerCase();
+          const match = localMecs.find(
+            m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
+          );
+          if (match && match.telefono) {
+            normalized.telefonoMecanico = String(match.telefono).trim();
+          }
+        } catch (e) {
+          console.warn("Error hidratando telefonoMecanico:", e);
+        }
+      }
+
+      // Valores por defecto seguros si no se encontraron
+      if (!normalized.codigoMecanico) {
+        normalized.codigoMecanico = row.codigoMecanico || row.codigo || "";
+      }
+      if (!normalized.taller) {
+        normalized.taller = row.taller || "Taller Oficial";
+      }
+      if (!normalized.fecha) {
+        normalized.fecha = row.fecha || "";
+      }
+      if (normalized.kilometraje === undefined || normalized.kilometraje === null) {
+        normalized.kilometraje = Number(row.kilometraje) || 0;
+      }
+      if (!normalized.trabajoRealizado) {
+        normalized.trabajoRealizado = row.trabajoRealizado || row.trabajo || "";
+      }
+
+      return normalized as HistorialRow;
+    });
   };
 
   const [copiedMecanicos, setCopiedMecanicos] = useState(false);
@@ -967,9 +1106,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
                     <div className="space-y-5 max-h-[360px] overflow-y-auto pr-1">
                       {historial.map((row, idx) => {
-                        // Obtener teléfono del mecánico de forma segura
-                        const localMecanicos = getSimulatedData().mecanicos;
-                        const tel = getMechanicPhone(row, localMecanicos);
+                        // Obtener teléfono del mecánico de forma segura directamente desde la propiedad telefonoMecanico hidratada
+                        const tel = row.telefonoMecanico || "";
                         const formattedTel = formatWhatsAppNumber(tel);
                         
                         // Mensaje personalizado de corroboración para compradores interesados
@@ -1000,7 +1138,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                     trabajo: row.trabajoRealizado
                                   });
                                 }}
-                                className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all flex items-center gap-1.5 active:scale-95"
+                                className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
                               >
                                 <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                 <span>Ver Tarjeta del Taller ({row.taller})</span>
@@ -1012,7 +1150,22 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                               <div className="text-left space-y-0.5">
                                 <div className="flex items-center gap-1.5">
                                   <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                  <span className="font-black text-white text-[11px] uppercase tracking-wide">{row.taller}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveTecnicoModal({
+                                        taller: row.taller,
+                                        codigo: row.codigoMecanico,
+                                        telefono: tel,
+                                        fecha: row.fecha,
+                                        kilometraje: row.kilometraje,
+                                        trabajo: row.trabajoRealizado
+                                      });
+                                    }}
+                                    className="font-black text-white text-[11px] uppercase tracking-wide hover:text-emerald-400 transition-colors text-left cursor-pointer"
+                                  >
+                                    {row.taller}
+                                  </button>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 font-mono">
                                   <span className="text-emerald-500 font-bold">Firma Sello: #{row.codigoMecanico}</span>
@@ -1020,23 +1173,26 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                 </div>
                               </div>
                               
-                              {/* Botón de Contacto Directo WhatsApp */}
-                              {formattedTel ? (
-                                <a
-                                  href={`https://wa.me/${formattedTel}?text=${encodeURIComponent(textMsg)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20"
-                                >
-                                  <Phone className="w-3 h-3 shrink-0" />
-                                  <span>Contactar por WhatsApp</span>
-                                  <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
-                                </a>
-                              ) : (
-                                <span className="text-[8.5px] text-slate-500 italic px-2.5 py-1.5 bg-slate-900 rounded border border-white/5 text-center">
-                                  WhatsApp no registrado
-                                </span>
-                              )}
+                              {/* Botón de Contacto Directo WhatsApp - Siempre visible en verde brillante, con fallback al administrador */}
+                              {(() => {
+                                const hasPhone = !!formattedTel;
+                                const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
+                                const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
+                                const directTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) y en su Certificado de AutoScore aparece registrado que el taller "${row.taller || "Taller"}" realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la validez de este servicio? Muchas gracias.`;
+                                
+                                return (
+                                  <a
+                                    href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
+                                  >
+                                    <Phone className="w-3 h-3 shrink-0 fill-current" />
+                                    <span>Contactar por WhatsApp</span>
+                                    <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
+                                  </a>
+                                );
+                              })()}
                             </div>
                           </div>
                         );
@@ -1094,20 +1250,25 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                     <span className="text-[9px] text-slate-500 font-mono">Sello Digital: #{mec.codigo}</span>
                                   </div>
                                   
-                                  {mec.telefono ? (
-                                    <a
-                                      href={`https://wa.me/${cleanedPhone}?text=${encodeURIComponent(textMsg)}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold px-2.5 py-1 rounded text-[10px] flex items-center gap-1.5 transition-all border border-emerald-500/20 active:scale-95"
-                                    >
-                                      <Phone className="w-3 h-3 text-emerald-500" />
-                                      <span>WhatsApp</span>
-                                      <ExternalLink className="w-2.5 h-2.5 opacity-60" />
-                                    </a>
-                                  ) : (
-                                    <span className="text-[8.5px] text-slate-600 font-medium italic">WhatsApp no config.</span>
-                                  )}
+                                  {(() => {
+                                    const hasPhone = !!mec.telefono;
+                                    const finalPhone = hasPhone ? cleanedPhone : formatWhatsAppNumber(adminPhoneEnv);
+                                    const targetName = hasPhone ? mec.taller : "Soporte / Administrador";
+                                    const customTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y en la plataforma de AutoScore aparece registrado que el taller "${mec.taller}" firmó su mantenimiento con código de sello #${mec.codigo}. ¿Podrían confirmarme la validez de estos trabajos? Muchas gracias.`;
+                                    
+                                    return (
+                                      <a
+                                        href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(customTextMsg)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] font-bold px-2.5 py-1 rounded text-[10px] flex items-center gap-1.5 transition-all border border-[#25D366]/20 active:scale-95 cursor-pointer"
+                                      >
+                                        <Phone className="w-3 h-3 text-[#25D366] fill-current" />
+                                        <span>{hasPhone ? "WhatsApp" : "Soporte"}</span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-60" />
+                                      </a>
+                                    );
+                                  })()}
                                 </div>
                               );
                             });
@@ -1319,24 +1480,27 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
               </div>
             </div>
 
-            {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN */}
-            {activeTecnicoModal.telefono ? (
-              <a
-                href={`https://wa.me/${formatWhatsAppNumber(activeTecnicoModal.telefono)}?text=${encodeURIComponent(
-                  `Hola ${activeTecnicoModal.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y tiene registrado en AutoScore un mantenimiento firmado por ustedes el día ${activeTecnicoModal.fecha.split(" ")[0]} con ${activeTecnicoModal.kilometraje} km ("${activeTecnicoModal.trabajo}"). ¿Podrían corroborar de celular a celular la validez de este trabajo en su taller? Muchas gracias.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg"
-              >
-                <Phone className="w-4 h-4 shrink-0" />
-                <span>Corroborar con el Taller</span>
-              </a>
-            ) : (
-              <p className="text-[10px] text-slate-500 text-center leading-normal">
-                Este mecánico/taller independiente no ha configurado su WhatsApp de contacto. Puede contactar al administrador para validación manual de la orden.
-              </p>
-            )}
+            {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN - Siempre visible, con fallback al administrador si es necesario */}
+            {(() => {
+              const modalTel = activeTecnicoModal.telefono ? String(activeTecnicoModal.telefono).trim() : "";
+              const finalModalPhone = modalTel ? formatWhatsAppNumber(modalTel) : formatWhatsAppNumber(adminPhoneEnv);
+              const isFallback = !modalTel;
+              
+              const tallerName = isFallback ? "Soporte Técnico" : (activeTecnicoModal.taller || "Taller");
+              const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${activeTecnicoModal.taller || "Taller"}" con código de sello #${activeTecnicoModal.codigo || ""} el día ${activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""} con ${activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km ("${activeTecnicoModal.trabajo || ""}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
+              
+              return (
+                <a
+                  href={`https://wa.me/${finalModalPhone}?text=${encodeURIComponent(modalMsg)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer"
+                >
+                  <Phone className="w-4 h-4 shrink-0 fill-current" />
+                  <span>{isFallback ? "Validar con Administrador" : "Corroborar con el Taller"}</span>
+                </a>
+              );
+            })()}
           </div>
         </div>
       )}

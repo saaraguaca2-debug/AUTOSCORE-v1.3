@@ -322,57 +322,116 @@ function doGet(e) {
       let timeline = [];
       let currentKm = 0;
       
-      if (sheetHistorial) {
+      // === COMIENZO DEL PARCHE DE TRAZABILIDAD REFORZADO ===
+      if (sheetHistorial && sheetMecanicos) {
         const historialData = sheetHistorial.getDataRange().getValues();
         const headersH = historialData[0];
         const rowsH = historialData.slice(1);
         
-        // Obtener mecánicos para cruce de teléfonos
-        let mecMap = {};
-        if (sheetMecanicos) {
-          const mecD = sheetMecanicos.getDataRange().getValues();
-          const hM = mecD[0];
-          const rM = mecD.slice(1);
-          for (let m = 0; m < rM.length; m++) {
-            const rowM = rM[m];
-            const code = getRowValue(rowM, hM, "CodigoMecanico").toString().trim().toLowerCase();
-            mecMap[code] = {
-              telefono: getRowValue(rowM, hM, "Telefono") || getRowValue(rowM, hM, "Celular") || getRowValue(rowM, hM, "WhatsApp") || getRowValue(rowM, hM, "Movil") || getRowValue(rowM, hM, "Contacto"),
-              taller: getRowValue(rowM, hM, "Taller")
-            };
+        const mecanicosData = sheetMecanicos.getDataRange().getValues();
+        const headersM = mecanicosData[0]; // Fila estricta de títulos
+        const rowsM = mecanicosData.slice(1);
+        
+        // Rastreador manual tolerante a mayúsculas, minúsculas y acentos
+        let colCod = -1;
+        let colTel = -1;
+        for (let c = 0; c < headersM.length; c++) {
+          const nombreCol = headersM[c].toString().trim().toLowerCase();
+          if (nombreCol === "codigomecanico" || nombreCol === "códigomecánico") colCod = c;
+          if (nombreCol === "telefono" || nombreCol === "teléfono" || nombreCol === "tel") colTel = c;
+        }
+        
+        // Respaldo de seguridad por si acaso
+        if (colCod === -1) colCod = 0;
+        if (colTel === -1) colTel = 4; // Columna E por defecto
+        
+        // Construir el directorio en memoria de forma segura
+        const directorioMecanicos = {};
+        for (let k = 0; k < rowsM.length; k++) {
+          const rowM = rowsM[k];
+          const codMec = rowM[colCod] !== undefined && rowM[colCod] !== null ? rowM[colCod].toString().trim() : "";
+          const telMec = rowM[colTel] !== undefined && rowM[colTel] !== null ? rowM[colTel].toString().trim() : "";
+          if (codMec) {
+            directorioMecanicos[codMec] = telMec;
+            directorioMecanicos[codMec.toLowerCase()] = telMec; // Soporte adicional para búsqueda insensible a mayúsculas/minúsculas
           }
         }
         
+        // Procesar el historial inyectando el teléfono cruzado con respaldo robusto de cabeceras
+        let hPlaca = headersH.indexOf("Placa");
+        if (hPlaca === -1) hPlaca = findColumnIndex(headersH, "Placa");
+        if (hPlaca === -1) hPlaca = 1; // Columna B por defecto
+        
+        let hId = headersH.indexOf("IdHistorial");
+        if (hId === -1) hId = findColumnIndex(headersH, "IdHistorial");
+        if (hId === -1) hId = 0; // Columna A por defecto
+        
+        let hFecha = headersH.indexOf("Fecha");
+        if (hFecha === -1) hFecha = findColumnIndex(headersH, "Fecha");
+        if (hFecha === -1) hFecha = 2; // Columna C por defecto
+        
+        let hKm = headersH.indexOf("Kilometraje");
+        if (hKm === -1) hKm = findColumnIndex(headersH, "Kilometraje");
+        if (hKm === -1) hKm = 3; // Columna D por defecto
+        
+        let hCodMec = headersH.indexOf("CodigoMecanico");
+        if (hCodMec === -1) hCodMec = findColumnIndex(headersH, "CodigoMecanico");
+        if (hCodMec === -1) hCodMec = 4; // Columna E por defecto
+        
+        let hTaller = headersH.indexOf("Taller");
+        if (hTaller === -1) hTaller = findColumnIndex(headersH, "Taller");
+        if (hTaller === -1) hTaller = 5; // Columna F por defecto
+        
+        let hTrabajo = headersH.indexOf("TrabajoRealizado");
+        if (hTrabajo === -1) hTrabajo = findColumnIndex(headersH, "TrabajoRealizado");
+        if (hTrabajo === -1) hTrabajo = 6; // Columna G por defecto
+        
         for (let j = 0; j < rowsH.length; j++) {
-          const rowH = rowsH[j];
-          const rowHPlaca = getRowValue(rowH, headersH, "Placa").toUpperCase();
-          if (rowHPlaca === placa) {
-            const codMec = getRowValue(rowH, headersH, "CodigoMecanico");
-            const km = Number(getRowValue(rowH, headersH, "Kilometraje", "0"));
+          const row = rowsH[j];
+          const valPlaca = hPlaca !== -1 && row[hPlaca] !== undefined ? row[hPlaca].toString().trim().toUpperCase() : "";
+          if (valPlaca === placa) {
+            const codigoFirma = hCodMec !== -1 && row[hCodMec] !== undefined ? row[hCodMec].toString().trim() : "";
+            const telDelTaller = directorioMecanicos[codigoFirma] || directorioMecanicos[codigoFirma.toLowerCase()] || "";
+            
+            const km = hKm !== -1 && row[hKm] !== undefined ? Number(row[hKm] || 0) : 0;
             if (km > currentKm) currentKm = km;
             
-            const item = {
-              idHistorial: Number(getRowValue(rowH, headersH, "IdHistorial")),
-              fecha: getRowValue(rowH, headersH, "Fecha"),
-              kilometraje: km,
-              codigoMecanico: codMec,
-              taller: getRowValue(rowH, headersH, "Taller", "Taller Independiente"),
-              trabajoRealizado: getRowValue(rowH, headersH, "TrabajoRealizado")
-            };
-            
-            // Cruzar teléfono de mecánico si está disponible
-            const normalizedCodMec = codMec.toString().trim().toLowerCase();
-            if (mecMap[normalizedCodMec]) {
-              item.telefonoMecanico = mecMap[normalizedCodMec].telefono;
+            // Formatear fecha de forma ultra-segura
+            let rawFecha = hFecha !== -1 && row[hFecha] !== undefined ? row[hFecha] : "";
+            let formattedFecha = "";
+            if (rawFecha instanceof Date) {
+              formattedFecha = Utilities.formatDate(rawFecha, "GMT-4", "dd/MM/yyyy");
+            } else if (rawFecha) {
+              try {
+                const strDate = rawFecha.toString().trim();
+                if (/^\d{2}\/\d{2}\/\d{4}$/.test(strDate)) {
+                  formattedFecha = strDate;
+                } else {
+                  formattedFecha = Utilities.formatDate(new Date(strDate), "GMT-4", "dd/MM/yyyy");
+                }
+              } catch (e) {
+                formattedFecha = String(rawFecha).split(" ")[0];
+              }
+            } else {
+              formattedFecha = Utilities.formatDate(new Date(), "GMT-4", "dd/MM/yyyy");
             }
             
-            timeline.push(item);
+            timeline.push({
+              idHistorial: hId !== -1 && row[hId] !== undefined ? Number(row[hId]) : j,
+              fecha: formattedFecha,
+              kilometraje: km,
+              codigoMecanico: codigoFirma,
+              taller: (hTaller !== -1 && row[hTaller] !== undefined && row[hTaller]) ? row[hTaller].toString().trim() : "Taller Autorizado",
+              trabajoRealizado: hTrabajo !== -1 && row[hTrabajo] !== undefined ? row[hTrabajo].toString().trim() : "",
+              telefonoMecanico: telDelTaller // <--- REPARACIÓN COMPLETADA
+            });
           }
         }
         
         // Ordenar del más reciente al más antiguo
         timeline.sort((a, b) => b.kilometraje - a.kilometraje);
       }
+      // === FIN DEL PARCHE ===
       
       // ALGORITMO DE SCORE EN TIEMPO REAL (REGLAS DE NEGOCIO):
       // - Resta 20 pts si el último "Aceite" fue hace más de 7,500 km O 180 días.
@@ -462,9 +521,8 @@ function doGet(e) {
         }
       };
       
-      if (tipoCertificado === "completo") {
-        respuesta.historial = timeline;
-      }
+      // Siempre incluimos el historial de mantenimiento en la respuesta para garantizar que el teléfono del mecánico y toda la trazabilidad técnica estén siempre disponibles en el frontend
+      respuesta.historial = timeline;
       
       return getCorsResponse(respuesta);
     }
