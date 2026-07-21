@@ -1,11 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
-  Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, CheckCircle,
-  Download
+  Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
+  CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
+  PenTool
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
-import { simularGetPorDueno, simularGetCertificado, simularRegistrarVehiculo } from "../mockData";
+import { 
+  simularGetPorDueno, simularGetCertificado, simularRegistrarVehiculo, 
+  simularLogin, simularRegistroUsuario 
+} from "../mockData";
 
 interface UsuarioViewProps {
   useSimulado: boolean;
@@ -13,451 +17,509 @@ interface UsuarioViewProps {
 }
 
 export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewProps) {
-  // Estados de Sesión del Usuario
-  const [idDueno, setIdDueno] = useState("");
-  const [loggedDueno, setLoggedDueno] = useState<string | null>(null);
+  // Variables ocultas para Vercel / Entorno
+  const adminPhoneEnv = (import.meta as any).env?.VITE_ADMIN_PHONE || (import.meta as any).env?.NEXT_PUBLIC_ADMIN_PHONE || "584121111111";
+
+  // Estados de control de vista
+  const [viewMode, setViewMode] = useState<"login" | "registro" | "garage" | "certificado">("login");
+  const [loggedUser, setLoggedUser] = useState<{ idDueno: string; nombre: string } | null>(null);
+  
+  // Login / Registro Inputs
+  const [idDuenoInput, setIdDuenoInput] = useState("");
+  const [nombreInput, setNombreInput] = useState("");
+  const [contrasenaInput, setContrasenaInput] = useState("");
+  
+  // Datos y Estados del Garage
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
+  const [selectedCar, setSelectedCar] = useState<Vehiculo | null>(null);
+  const [activeCertType, setActiveCertType] = useState<"simple" | "completo">("simple");
+  const [historial, setHistorial] = useState<HistorialRow[]>([]);
+  
+  // Feedback
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Estados de Interacción con Carro seleccionado
-  const [selectedCar, setSelectedCar] = useState<Vehiculo | null>(null);
-  const [mostrarOpciones, setMostrarOpciones] = useState(false);
-  const [activeCertType, setActiveCertType] = useState<"simple" | "completo" | null>(null);
-  const [mostrarQR, setMostrarQR] = useState(false);
+  // Compartir e Interacciones
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showFaceToFaceQR, setShowFaceToFaceQR] = useState(false);
+  const [showMecanicoQR, setShowMecanicoQR] = useState(false);
+  const [activeTecnicoModal, setActiveTecnicoModal] = useState<any | null>(null);
 
-  // Historial cargado del carro (solo para certificado completo)
-  const [historial, setHistorial] = useState<HistorialRow[]>([]);
-  const [loadingCert, setLoadingCert] = useState(false);
+  // Registro de vehículo
+  const [mostrarFormCar, setMostrarFormCar] = useState(false);
+  const [newPlaca, setNewPlaca] = useState("");
+  const [newMarca, setNewMarca] = useState("");
+  const [newModelo, setNewModelo] = useState("");
+  const [newAnio, setNewAnio] = useState("");
+  const [registrandoCar, setRegistrandoCar] = useState(false);
 
-  // Estados para Registro de un nuevo Vehículo por el propietario
-  const [mostrarFormRegistro, setMostrarFormRegistro] = useState(false);
-  const [nuevaPlaca, setNuevaPlaca] = useState("");
-  const [nuevaMarca, setNuevaMarca] = useState("");
-  const [nuevoModelo, setNuevoModelo] = useState("");
-  const [nuevoAnio, setNuevoAnio] = useState("");
-  const [errorRegistro, setErrorRegistro] = useState<string | null>(null);
-  const [registrandoVehiculo, setRegistrandoVehiculo] = useState(false);
+  // ACCESO PÚBLICO POR ENLACE O QR ESCANEADO (Bypass al cargar)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPlaca = params.get("placa");
+    const urlTipo = params.get("tipoCertificado");
 
-  const calcularScoreAutomatico = (anioStr: string): number => {
-    const anio = Number(anioStr);
-    if (!anioStr || isNaN(anio) || anio < 1900) return 90; // puntuación base por defecto
-    const anioActual = new Date().getFullYear();
-    const antiguedad = Math.max(0, anioActual - anio);
-    const scoreCalculado = 100 - (antiguedad * 1.5);
-    return Math.round(Math.min(100, Math.max(50, scoreCalculado)));
+    if (urlPlaca) {
+      const tipoC = urlTipo === "completo" ? "completo" : "simple";
+      cargarCertificadoPublico(urlPlaca, tipoC);
+    }
+  }, []);
+
+  const cargarCertificadoPublico = async (placa: string, tipo: "simple" | "completo") => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (useSimulado) {
+        const res = simularGetCertificado(placa, tipo);
+        if (res.success) {
+          setSelectedCar(res.vehiculo);
+          setHistorial(res.historial || []);
+          setActiveCertType(tipo);
+          setViewMode("certificado");
+        } else {
+          setError(res.error || "No se pudo recuperar el certificado.");
+        }
+      } else {
+        if (!appScriptUrl) {
+          throw new Error("Debe configurar la URL del Google Sheets Apps Script.");
+        }
+        const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
+        const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
+        if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
+        const result = await response.json();
+        if (result && result.success) {
+          setSelectedCar(result.vehiculo);
+          setHistorial(result.historial || []);
+          setActiveCertType(tipo);
+          setViewMode("certificado");
+        } else {
+          setError(result.error || "Fallo en la respuesta de Google Sheets.");
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Error al conectar con la base de datos.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleRegistrarVehiculo = async (e: React.FormEvent) => {
+  // Autenticación de Propietarios (Login)
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loggedDueno) return;
-    if (!nuevaPlaca.trim() || !nuevaMarca.trim() || !nuevoModelo.trim() || !nuevoAnio.trim()) {
-      setErrorRegistro("Por favor rellene todos los campos obligatorios.");
+    if (!idDuenoInput.trim() || !contrasenaInput.trim()) {
+      setError("Introduzca su Cédula y Contraseña.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      if (useSimulado) {
+        const res = simularLogin(idDuenoInput, contrasenaInput);
+        if (res.success && res.usuario) {
+          const resVeh = simularGetPorDueno(idDuenoInput);
+          setVehiculos(resVeh.data || []);
+          setLoggedUser({
+            idDueno: res.usuario.idDueno,
+            nombre: res.usuario.nombre
+          });
+          setViewMode("garage");
+        } else {
+          setError(res.error || "Error de credenciales.");
+        }
+      } else {
+        if (!appScriptUrl) {
+          throw new Error("La URL de Google Sheets Apps Script no está configurada.");
+        }
+        const url = `${appScriptUrl}?accion=login&idDueno=${encodeURIComponent(idDuenoInput.trim())}&contrasena=${encodeURIComponent(contrasenaInput.trim())}`;
+        const res = await fetch(url, { method: "GET", mode: "cors" });
+        if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
+        const json = await res.json();
+        if (json && json.success) {
+          // Obtener vehículos de este dueño
+          const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(json.usuario.idDueno)}`;
+          const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
+          const vehJson = await vehRes.json();
+          setVehiculos(vehJson.data || []);
+          setLoggedUser({
+            idDueno: json.usuario.idDueno,
+            nombre: json.usuario.nombre
+          });
+          setViewMode("garage");
+        } else {
+          setError(json.error || "Error de autenticación.");
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Fallo la comunicación con el servidor.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Registro de Propietarios (Nuevo Cliente en estado Pendiente)
+  const handleRegistro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idDuenoInput.trim() || !nombreInput.trim() || !contrasenaInput.trim()) {
+      setError("Por favor complete todos los datos requeridos.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      if (useSimulado) {
+        const res = simularRegistroUsuario(idDuenoInput, nombreInput, contrasenaInput);
+        if (res.success) {
+          setSuccessMsg("¡Registro Exitoso! Tu cuenta está en espera de aprobación por el Administrador.");
+          setViewMode("login");
+          setNombreInput("");
+          setContrasenaInput("");
+        } else {
+          setError(res.error || "Error en el auto-registro.");
+        }
+      } else {
+        if (!appScriptUrl) {
+          throw new Error("URL de Sheets no configurada.");
+        }
+        const payload = {
+          accion: "registroUsuario",
+          idDueno: idDuenoInput.trim(),
+          nombre: nombreInput.trim(),
+          contrasena: contrasenaInput.trim()
+        };
+        const res = await fetch(appScriptUrl, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error("Fallo al enviar datos.");
+        const json = await res.json();
+        if (json && json.success) {
+          setSuccessMsg("¡Registro guardado! Cuenta PENDIENTE de aprobación por el Administrador.");
+          setViewMode("login");
+          setNombreInput("");
+          setContrasenaInput("");
+        } else {
+          setError(json.error || "Fallo el registro en Google Sheets.");
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Error al conectar con la base de datos.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cargar Certificado desde el Garage
+  const handleVerCertificado = async (veh: Vehiculo, tipo: "simple" | "completo") => {
+    setLoading(true);
+    setError(null);
+    setShowFaceToFaceQR(false);
+    setActiveCertType(tipo);
+
+    try {
+      if (useSimulado) {
+        const res = simularGetCertificado(veh.placa, tipo);
+        if (res.success) {
+          setSelectedCar(res.vehiculo);
+          setHistorial(res.historial || []);
+          setViewMode("certificado");
+        } else {
+          setError(res.error || "No se pudo recuperar el certificado.");
+        }
+      } else {
+        if (!appScriptUrl) throw new Error("URL de Sheets no configurada.");
+        const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=${tipo}`;
+        const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
+        if (!response.ok) throw new Error("Error en red.");
+        const result = await response.json();
+        if (result && result.success) {
+          setSelectedCar(result.vehiculo);
+          setHistorial(result.historial || []);
+          setViewMode("certificado");
+        } else {
+          setError(result.error || "No se encontró el certificado.");
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || "Error al sincronizar con el Sheets.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Registrar Vehículo (Clientes homologan su carro)
+  const handleRegistrarVehiculoForm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loggedUser) return;
+    if (!newPlaca.trim() || !newMarca.trim() || !newModelo.trim() || !newAnio.trim()) {
+      setError("Todos los datos son obligatorios.");
       return;
     }
 
-    setRegistrandoVehiculo(true);
-    setErrorRegistro(null);
+    setRegistrandoCar(true);
+    setError(null);
 
-    const numAnio = Number(nuevoAnio);
-    if (isNaN(numAnio) || numAnio < 1900 || numAnio > new Date().getFullYear() + 1) {
-      setErrorRegistro("Por favor ingrese un año válido.");
-      setRegistrandoVehiculo(false);
+    const anioNum = Number(newAnio);
+    if (isNaN(anioNum) || anioNum < 1950 || anioNum > 2027) {
+      setError("Por favor, ingrese un año de fabricación válido.");
+      setRegistrandoCar(false);
       return;
     }
 
-    const numScore = calcularScoreAutomatico(nuevoAnio);
+    // Algoritmo de Score Base por Antigüedad
+    const antiguedad = Math.max(0, new Date().getFullYear() - anioNum);
+    const scoreBaseCalculado = Math.max(50, Math.min(100, 100 - (antiguedad * 1.5)));
 
-    const nuevoCarro: Vehiculo = {
-      placa: nuevaPlaca.trim().toUpperCase(),
-      marca: nuevaMarca.trim(),
-      modelo: nuevoModelo.trim(),
-      anio: numAnio,
-      idDueno: loggedDueno,
-      score: numScore,
+    const nuevoVehiculo: Vehiculo = {
+      placa: newPlaca.trim().toUpperCase(),
+      marca: newMarca.trim(),
+      modelo: newModelo.trim(),
+      anio: anioNum,
+      idDueno: loggedUser.idDueno,
+      score: Math.round(scoreBaseCalculado),
       estadoCertificado: "Activo"
     };
 
     try {
       if (useSimulado) {
-        // Registrar en mockData local
-        setTimeout(() => {
-          const res = simularRegistrarVehiculo(nuevoCarro);
-          if (res.success) {
-            setVehiculos((prev) => [...prev, res.vehiculo as Vehiculo]);
-            setMostrarFormRegistro(false);
-            setNuevaPlaca("");
-            setNuevaMarca("");
-            setNuevoModelo("");
-            setNuevoAnio("");
-          } else {
-            setErrorRegistro(res.error || "Error al registrar el vehículo.");
-          }
-          setRegistrandoVehiculo(false);
-        }, 800);
-      } else {
-        // Registrar en Google Sheets Live
-        if (!appScriptUrl) {
-          throw new Error("Debe configurar la URL del Google Apps Script en el botón de arriba ⚙️.");
+        const res = simularRegistrarVehiculo(nuevoVehiculo);
+        if (res.success) {
+          setVehiculos((prev) => [...prev, nuevoVehiculo]);
+          setMostrarFormCar(false);
+          setNewPlaca("");
+          setNewMarca("");
+          setNewModelo("");
+          setNewAnio("");
+        } else {
+          setError(res.error || "Error al registrar vehículo.");
         }
-
+      } else {
+        if (!appScriptUrl) throw new Error("URL de Sheets no configurada.");
         const payload = {
           accion: "registrarVehiculo",
-          placa: nuevoCarro.placa,
-          marca: nuevoCarro.marca,
-          modelo: nuevoCarro.modelo,
-          anio: nuevoCarro.anio,
-          idDueno: nuevoCarro.idDueno,
-          score: nuevoCarro.score,
-          estadoCertificado: nuevoCarro.estadoCertificado
+          ...nuevoVehiculo
         };
-
-        const response = await fetch(appScriptUrl, {
+        const res = await fetch(appScriptUrl, {
           method: "POST",
           mode: "cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(payload)
         });
-
-        if (!response.ok) {
-          throw new Error(`Error en la conexión del servidor: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        if (result && result.success) {
-          setVehiculos((prev) => [...prev, nuevoCarro]);
-          setMostrarFormRegistro(false);
-          setNuevaPlaca("");
-          setNuevaMarca("");
-          setNuevoModelo("");
-          setNuevoAnio("");
+        if (!res.ok) throw new Error("Fallo en la comunicación con el servidor.");
+        const json = await res.json();
+        if (json && json.success) {
+          setVehiculos((prev) => [...prev, nuevoVehiculo]);
+          setMostrarFormCar(false);
+          setNewPlaca("");
+          setNewMarca("");
+          setNewModelo("");
+          setNewAnio("");
         } else {
-          setErrorRegistro((result && result.error) || "Error al registrar el vehículo en Sheets.");
+          setError(json.error || "No se pudo registrar en Google Sheets.");
         }
-        setRegistrandoVehiculo(false);
       }
     } catch (err: any) {
-      setErrorRegistro(err.message || "Error al conectar con la base de datos.");
-      setRegistrandoVehiculo(false);
+      setError(err.message || "Fallo la sincronización.");
+    } finally {
+      setRegistrandoCar(false);
     }
   };
 
-  const isVencido = selectedCar ? (selectedCar.estadoCertificado || "Activo").toLowerCase() !== "activo" : false;
-
-  // 1. LOGIN / INGRESO AL GARAJE VIRTUAL
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!idDueno.trim()) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      if (useSimulado) {
-        // Ejecutar simulación local instantánea
-        setTimeout(() => {
-          const res = simularGetPorDueno(idDueno) as any;
-          if (res.success) {
-            setVehiculos(res.data);
-            setLoggedDueno(idDueno.trim());
-          } else {
-            setError(res.error || "Error al buscar vehículos.");
-          }
-          setLoading(false);
-        }, 600); // Pequeño retraso para dar sensación de procesamiento real
-      } else {
-        // Consulta real por API a Google Sheets
-        if (!appScriptUrl) {
-          throw new Error("Debe configurar la URL del Google Apps Script en el botón de arriba ⚙️.");
-        }
-
-        const fetchUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(idDueno.trim())}`;
-        const response = await fetch(fetchUrl, {
-          method: "GET",
-          mode: "cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          }
-        });
-        if (!response.ok) {
-          throw new Error(`Error de conexión al servidor: ${response.statusText}`);
-        }
-
-        const result = await response.json();
-        if (result && result.success) {
-          const validVehiculos = Array.isArray(result.data) ? result.data : [];
-          setVehiculos(validVehiculos);
-          setLoggedDueno(idDueno.trim());
-        } else {
-          setVehiculos([]);
-          setError((result && result.error) || "No se encontraron vehículos.");
-        }
-        setLoading(false);
-      }
-    } catch (err: any) {
-      const errorMsg = err.message || "";
-      if (
-        errorMsg.includes("Failed to fetch") || 
-        errorMsg.includes("fetch") || 
-        errorMsg.includes("Unexpected token") || 
-        err instanceof TypeError
-      ) {
-        setError(
-          "⚠️ ERROR DE CONEXIÓN CON GOOGLE SHEETS: Tu Google Apps Script no está permitiendo la conexión externa del navegador (CORS). Sigue estos 3 pasos obligatorios:\n\n" +
-          "1. En el editor de Apps Script, dale clic arriba a 'Implementar' > 'Nueva implementación'.\n" +
-          "2. En 'Tipo', elige 'Aplicación web'. Configura 'Ejecutar como: Yo' y 'Quién tiene acceso: Cualquier persona' (Anyone).\n" +
-          "3. Haz clic en 'Implementar', autoriza los permisos y COPIA la URL que termina en '/exec'.\n\n" +
-          "Nota: Si usas la URL de prueba '/dev' o no pusiste 'Cualquier persona', el navegador siempre dará este error."
-        );
-      } else {
-        setError(err.message || "Error al conectar con la base de datos de Google Sheets.");
-      }
-      setLoading(false);
-    }
-  };
-
-  // 2. CONSULTAR CERTIFICADO (SIMPLE O COMPLETO)
-  const handleVerCertificado = async (car: Vehiculo, tipo: "simple" | "completo") => {
-    setActiveCertType(tipo);
-    setMostrarQR(false);
-    setMostrarOpciones(false);
-    setLoadingCert(true);
-    setError(null);
-
-    try {
-      if (useSimulado) {
-        setTimeout(() => {
-          const res = simularGetCertificado(car.placa, tipo);
-          if (res.success) {
-            setSelectedCar(res.vehiculo);
-            setHistorial(res.historial || []);
-          } else {
-            setError(res.error || "No se pudo recuperar el certificado.");
-          }
-          setLoadingCert(false);
-        }, 500);
-      } else {
-        if (!appScriptUrl) {
-          throw new Error("La URL de Apps Script no está configurada.");
-        }
-
-        const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(car.placa)}&tipoCertificado=${tipo}`;
-        const response = await fetch(fetchUrl, {
-          method: "GET",
-          mode: "cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          }
-        });
-        if (!response.ok) {
-          throw new Error("Error en la conexión de red.");
-        }
-
-        const result = await response.json();
-        if (result && result.success) {
-          setSelectedCar(result.vehiculo || null);
-          setHistorial(Array.isArray(result.historial) ? result.historial : []);
-        } else {
-          setError((result && result.error) || "No se encontró el certificado solicitado.");
-        }
-        setLoadingCert(false);
-      }
-    } catch (err: any) {
-      const errorMsg = err.message || "";
-      if (
-        errorMsg.includes("Failed to fetch") || 
-        errorMsg.includes("fetch") || 
-        errorMsg.includes("Unexpected token") || 
-        err instanceof TypeError
-      ) {
-        setError(
-          "⚠️ ERROR DE CONEXIÓN CON GOOGLE SHEETS: Tu Google Apps Script no está permitiendo la conexión externa del navegador (CORS). Sigue estos 3 pasos obligatorios:\n\n" +
-          "1. En el editor de Apps Script, dale clic arriba a 'Implementar' > 'Nueva implementación'.\n" +
-          "2. En 'Tipo', elige 'Aplicación web'. Configura 'Ejecutar como: Yo' y 'Quién tiene acceso: Cualquier persona' (Anyone).\n" +
-          "3. Haz clic en 'Implementar', autoriza los permisos y COPIA la URL que termina en '/exec'.\n\n" +
-          "Nota: Si usas la URL de prueba '/dev' o no pusiste 'Cualquier persona', el navegador siempre dará este error."
-        );
-      } else {
-        setError(err.message || "Fallo la comunicación con Google Sheets.");
-      }
-      setLoadingCert(false);
-    }
-  };
-
-  // Desconectar o cerrar sesión de garaje
-  const handleLogout = () => {
-    setLoggedDueno(null);
-    setVehiculos([]);
-    setSelectedCar(null);
-    setMostrarOpciones(false);
-    setActiveCertType(null);
-    setMostrarQR(false);
-    setIdDueno("");
-  };
-
-  // Volver del Certificado o QR al Garaje Virtual
   const handleBackToGarage = () => {
-    setSelectedCar(null);
-    setActiveCertType(null);
-    setMostrarQR(false);
-    setMostrarOpciones(false);
-    setError(null);
+    // Si entramos con un enlace público y no estamos logeados, limpiamos y vamos a login
+    if (!loggedUser) {
+      // Limpiar query params de la URL limpiamente para refrescar la vista
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+      setViewMode("login");
+      setSelectedCar(null);
+    } else {
+      setViewMode("garage");
+      setSelectedCar(null);
+    }
   };
 
-  // Obtener color del Score
+  // Copiar Enlace Digital para WhatsApp o Marketplace
+  const copyPublicLink = () => {
+    if (!selectedCar) return;
+    const path = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo`;
+    navigator.clipboard.writeText(path);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
   const getScoreColor = (score: number) => {
     if (score >= 90) return "text-emerald-400 border-emerald-500/30 bg-emerald-500/10";
     if (score >= 70) return "text-amber-400 border-amber-500/30 bg-amber-500/10";
     return "text-red-400 border-red-500/30 bg-red-500/10";
   };
 
-  // Obtener etiqueta de Salud Mecánica basada en el Score (para carros activos)
   const getSaludMecanicaTag = (score: number) => {
-    if (score >= 90) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-          🟢 MANTENIMIENTO AL DÍA
-        </span>
-      );
-    }
-    if (score >= 70) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25">
-          🟡 MANTENIMIENTO RETRASADO
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase tracking-wider bg-red-500/10 text-red-400 border border-red-500/25 animate-pulse">
-        🔴 ALERTA MECÁNICA: REQUIERE REVISIÓN
-      </span>
-    );
+    if (score >= 90) return "🟢 MANTENIMIENTO AL DÍA";
+    if (score >= 70) return "🟡 MANTENIMIENTO RETRASADO";
+    return "🔴 ALERTA MECÁNICA";
   };
 
-  const renderTimeline = () => {
-    if (isVencido) {
-      return (
-        <div className="p-5 bg-red-500/5 border border-red-500/20 rounded-2xl text-center">
-          <div className="inline-flex p-2.5 rounded-xl bg-red-500/10 text-red-400 mb-3 border border-red-500/20">
-            <Lock className="w-5 h-5" />
-          </div>
-          <p className="text-xs text-red-400 font-bold uppercase tracking-wider">Historial Bloqueado</p>
-          <p className="text-[11px] text-slate-400 mt-2 leading-relaxed max-w-sm mx-auto">
-            La línea de tiempo detallada de reparaciones y mantenimiento está bloqueada porque el certificado de este vehículo ha expirado.
-          </p>
-          <a
-            href={`https://wa.me/584120000000?text=${encodeURIComponent(
-              `Hola AutoScore, deseo renovar el certificado digital de mi vehículo placa ${selectedCar?.placa} para actualizar mi Score Mecánico y habilitar el historial de reparaciones.`
-            )}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-4 inline-flex items-center gap-2 bg-red-500 hover:bg-red-400 text-white font-extrabold text-[11px] py-2 px-4 rounded-xl shadow-lg transition-all"
-          >
-            Renovar Certificado Ahora
-          </a>
-        </div>
-      );
-    }
-
-    if (loadingCert) {
-      return (
-        <div className="text-center py-6 text-slate-500 text-xs flex items-center justify-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin text-amber-500" />
-          <span>Recuperando registros...</span>
-        </div>
-      );
-    }
-
-    if (historial.length === 0) {
-      return (
-        <div className="text-center py-6 bg-slate-950/40 rounded-xl border border-slate-900 text-xs text-slate-500 leading-normal">
-          No se registran mantenimientos técnicos firmados para esta unidad.
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4 relative before:absolute before:left-3.5 before:top-2 before:bottom-2 before:w-[1.5px] before:bg-slate-800">
-        {historial.map((row, index) => (
-          <div key={row.idHistorial || index} className="relative pl-8">
-            {/* Nodo de línea de tiempo */}
-            <div className="absolute left-1.5 top-1.5 w-4 h-4 rounded-full bg-amber-500/20 border border-amber-500 flex items-center justify-center">
-              <Wrench className="w-2.5 h-2.5 text-amber-400" />
-            </div>
-
-            {/* Contenido del registro */}
-            <div className="bg-black/40 border border-white/5 rounded-xl p-4 shadow-sm">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2">
-                <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
-                  <Calendar className="w-3 h-3" />
-                  {row.fecha ? row.fecha.split(" ")[0] : "Fecha N/A"}
-                </span>
-                <span className="text-[10px] text-amber-400 font-mono font-semibold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 flex items-center gap-1 w-fit">
-                  <Gauge className="w-3 h-3" />
-                  {(row.kilometraje ?? 0).toLocaleString()} km
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-300 font-light leading-relaxed mb-3">
-                {row.trabajoRealizado}
-              </p>
-
-              <div className="pt-2.5 border-t border-white/5 text-[10px] text-slate-500 flex flex-wrap justify-between items-center gap-1.5">
-                <span className="font-medium text-slate-400">
-                  Taller: <strong className="text-slate-300 font-semibold">{row.taller}</strong>
-                </span>
-                <span className="font-mono bg-white/5 px-1.5 py-0.5 rounded border border-white/10">
-                  Firma: #{row.codigoMecanico}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
+  // URL del QR de certificación interactivo cara a cara
+  const generateQRCodeUrl = () => {
+    if (!selectedCar) return "";
+    const publicLink = `${window.location.origin}${window.location.pathname}?placa=${selectedCar.placa}&tipoCertificado=completo`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(publicLink)}`;
   };
 
-  const renderContent = () => {
-    // ---------------- PANTALLA: LOGIN PROPIETARIO ----------------
-    if (!loggedDueno) {
-      return (
-        <div className="glass-panel p-6 shadow-xl">
-          <div className="text-center mb-6">
-            <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-400 mb-3 border border-amber-500/20">
+  // URL del QR para firma de mecánicos
+  const generateMecanicoQRCodeUrl = () => {
+    if (!selectedCar) return "";
+    const mechanicLink = `${window.location.origin}${window.location.pathname}?vista=mecanico&placa=${selectedCar.placa}`;
+    return `https://api.qrserver.com/v1/create-qr-code/?size=250x250&color=000000&data=${encodeURIComponent(mechanicLink)}`;
+  };
+
+  return (
+    <div className="w-full max-w-md mx-auto px-4 py-6 text-slate-100 flex flex-col space-y-5 animate-fade-in">
+      
+      {/* ---------------- VISTA A: LOGIN ---------------- */}
+      {viewMode === "login" && (
+        <div className="space-y-4">
+          <div className="text-center">
+            <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-4 shadow-lg">
               <User className="w-6 h-6" />
             </div>
-            <h2 className="text-xl font-display font-extrabold text-white">Mi Garaje AutoScore</h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Ingresa tus credenciales registradas para ver tus carros homologados y consultar tus certificados VIP.
+            <h3 className="text-xl font-display font-extrabold text-white">Mi Garaje Virtual</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-[85%] mx-auto leading-normal">
+              Inspecciona tu Score, genera QRs de mantenimiento y comparte tus certificados de venta homologados.
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="bg-slate-900/40 border border-white/5 p-5 rounded-2xl space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Cédula de Identidad o Correo del Dueño:
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Cédula de Identidad (C.I.):
               </label>
-              <div className="relative">
-                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: 26123456 o correo@ejemplo.com"
-                  value={idDueno}
-                  onChange={(e) => setIdDueno(e.target.value)}
-                  className="w-full glass-input rounded-xl pl-11 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 placeholder-slate-500 font-medium"
-                />
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">
-                * Tip: Si usas el simulador, ingresa el ID pre-cargado: <strong className="text-amber-500/80 font-mono">26123456</strong>
-              </p>
+              <input
+                type="text"
+                required
+                placeholder="Ej: 26123456"
+                value={idDuenoInput}
+                onChange={(e) => setIdDuenoInput(e.target.value)}
+                className="w-full glass-input rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Contraseña Privada:
+              </label>
+              <input
+                type="password"
+                required
+                placeholder="Introduzca su clave"
+                value={contrasenaInput}
+                onChange={(e) => setContrasenaInput(e.target.value)}
+                className="w-full glass-input rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+              />
             </div>
 
             {error && (
-              <div className="p-3 rounded-lg bg-red-950/30 border border-red-900/40 text-red-400 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="p-3 bg-red-950/20 border border-red-900/30 text-red-400 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span className="leading-tight">{error}</span>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="p-3 bg-emerald-950/20 border border-emerald-900/30 text-emerald-400 text-xs rounded-xl flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                <span className="leading-tight">{successMsg}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+              id="btn-login-dueno"
+            >
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Ingresar al Garaje</span>}
+            </button>
+          </form>
+
+          <div className="text-center">
+            <button
+              onClick={() => { setViewMode("registro"); setError(null); setSuccessMsg(null); }}
+              className="text-xs text-slate-400 hover:text-amber-500 font-medium inline-flex items-center gap-1.5 py-1"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>¿No tienes cuenta? Registra tu usuario aquí</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- VISTA B: REGISTRO CLIENTE ---------------- */}
+      {viewMode === "registro" && (
+        <div className="space-y-4">
+          <div className="text-center">
+            <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20 mb-3">
+              <UserPlus className="w-6 h-6" />
+            </div>
+            <h3 className="text-xl font-display font-extrabold text-white">Registro de Propietario</h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-[80%] mx-auto leading-normal">
+              Crea tu perfil oficial de AutoScore. Tu cuenta iniciará como PENDIENTE para revisión del Administrador.
+            </p>
+          </div>
+
+          <form onSubmit={handleRegistro} className="bg-slate-900/40 border border-white/5 p-5 rounded-2xl space-y-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Cédula de Identidad (C.I.):
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Ej: 26123456"
+                value={idDuenoInput}
+                onChange={(e) => setIdDuenoInput(e.target.value)}
+                className="w-full glass-input rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Nombre Completo:
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="Ej: Pedro Pérez"
+                value={nombreInput}
+                onChange={(e) => setNombreInput(e.target.value)}
+                className="w-full glass-input rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                Establecer Contraseña:
+              </label>
+              <input
+                type="password"
+                required
+                placeholder="Cree una contraseña segura"
+                value={contrasenaInput}
+                onChange={(e) => setContrasenaInput(e.target.value)}
+                className="w-full glass-input rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-950/20 border border-red-900/30 text-red-400 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
@@ -465,638 +527,509 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-              id="btn-login-dueno"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
             >
-              {loading ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Search className="w-4 h-4" />
-                  Buscar en el Garaje
-                </>
-              )}
+              {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <span>Solicitar Aprobación</span>}
             </button>
           </form>
 
-          {/* Información de ayuda Venezuela */}
-          <div className="mt-6 pt-5 border-t border-slate-800/80 text-[11px] text-slate-500 leading-relaxed">
-            <span className="font-semibold text-slate-400 block mb-1">¿Cómo funciona AutoScore?</span>
-            El registro vincula múltiples carros bajo un solo dueño mediante el ID proporcionado. Cada carro tiene un registro inviolable alimentado exclusivamente por talleres mecánicos certificados.
+          <div className="text-center">
+            <button
+              onClick={() => { setViewMode("login"); setError(null); setSuccessMsg(null); }}
+              className="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Volver a Inicio de Sesión</span>
+            </button>
           </div>
         </div>
-      );
-    }
+      )}
 
-    // ---------------- PANTALLA: RENDER DE CERTIFICADO DIGITAL VIP ----------------
-    if (selectedCar && activeCertType) {
-      if (isVencido) {
-        return (
-          <div className="space-y-6">
-            {/* Botón volver */}
+      {/* ---------------- VISTA C: GARAJE VIRTUAL (DUEÑO) ---------------- */}
+      {viewMode === "garage" && loggedUser && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between bg-slate-900/30 p-3 rounded-2xl border border-white/5">
+            <div>
+              <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block">PROPIETARIO HOMOLOGADO</span>
+              <span className="text-sm font-bold text-white block mt-0.5">{loggedUser.nombre}</span>
+              <span className="text-[10px] text-slate-500 font-mono block">C.I: {loggedUser.idDueno}</span>
+            </div>
+            <button
+              onClick={() => { setLoggedUser(null); setVehiculos([]); setViewMode("login"); }}
+              className="text-[10px] font-bold bg-slate-950 hover:bg-slate-900 border border-white/5 text-slate-400 px-2.5 py-1.5 rounded-lg transition-colors"
+            >
+              Salir
+            </button>
+          </div>
+
+          <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 text-xs">
+            <span className="text-slate-400">Tus Vehículos: <strong className="text-white font-mono">{vehiculos.length}</strong></span>
+            <button
+              onClick={() => setMostrarFormCar(!mostrarFormCar)}
+              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black px-2.5 py-1.5 rounded-lg text-[10px] transition-all"
+            >
+              {mostrarFormCar ? "Cerrar" : "➕ Registrar Vehículo"}
+            </button>
+          </div>
+
+          {mostrarFormCar && (
+            <form onSubmit={handleRegistrarVehiculoForm} className="bg-slate-900/60 border border-amber-500/20 p-4 rounded-2xl space-y-3.5">
+              <span className="block text-[10px] font-bold text-amber-500 uppercase tracking-widest border-b border-white/5 pb-1">Homologar Nuevo Vehículo</span>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Placa:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: AB123CD"
+                    value={newPlaca}
+                    onChange={(e) => setNewPlaca(e.target.value.toUpperCase())}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-amber-400 font-mono font-bold uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Año:</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="Ej: 2018"
+                    value={newAnio}
+                    onChange={(e) => setNewAnio(e.target.value)}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Marca:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Toyota"
+                    value={newMarca}
+                    onChange={(e) => setNewMarca(e.target.value)}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Modelo:</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Corolla"
+                    value={newModelo}
+                    onChange={(e) => setNewModelo(e.target.value)}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs"
+                  />
+                </div>
+              </div>
+
+              {error && <p className="text-[10px] text-red-400">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={registrandoCar}
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-2 rounded-lg text-[10px] transition-all"
+              >
+                {registrandoCar ? "Guardando en la Nube..." : "Homologar de Forma Gratuita"}
+              </button>
+            </form>
+          )}
+
+          {/* Vehículos Listado */}
+          <div className="space-y-3">
+            {vehiculos.map((car, idx) => (
+              <div key={idx} className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{car.marca}</span>
+                    <h4 className="text-base font-display font-extrabold text-white mt-0.5">{car.modelo} <span className="text-slate-400 font-normal text-xs">({car.anio})</span></h4>
+                    <span className="inline-block bg-black border border-white/10 font-mono text-xs font-bold tracking-widest px-2.5 py-0.5 rounded text-slate-300 mt-2">
+                      {car.placa}
+                    </span>
+                  </div>
+                  
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
+                    car.estadoCertificado === "Activo"
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : "bg-red-500/10 text-red-400 border border-red-500/20"
+                  }`}>
+                    Cert: {car.estadoCertificado}
+                  </span>
+                </div>
+
+                <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => handleVerCertificado(car, "simple")}
+                    className="py-1.5 text-[11px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-center"
+                  >
+                    Certificado Simple
+                  </button>
+                  <button
+                    onClick={() => handleVerCertificado(car, "completo")}
+                    className="py-1.5 text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/20 text-amber-400 rounded-lg text-center"
+                  >
+                    Certificado Completo
+                  </button>
+                </div>
+              </div>
+            ))}
+            {vehiculos.length === 0 && (
+              <p className="text-xs text-slate-500 text-center py-6">Aún no tiene vehículos homologados en su Garaje Virtual.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- VISTA D: CERTIFICADO VIP DETALLADO ---------------- */}
+      {viewMode === "certificado" && selectedCar && (
+        <div className="space-y-5 animate-fade-in">
+          
+          {/* Botón Volver */}
+          <div className="flex items-center justify-between no-print">
             <button
               onClick={handleBackToGarage}
-              className="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-400 font-bold uppercase tracking-wider no-print"
-              id="btn-cert-back"
+              className="flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-400 font-extrabold uppercase tracking-wider"
             >
               <ChevronLeft className="w-4.5 h-4.5" />
-              Volver al Garaje
+              <span>Volver</span>
             </button>
+            <span className="text-[10px] font-mono text-slate-500">AUTOSCORE VERIFIED ID</span>
+          </div>
 
-            <div className="glass-panel p-6 shadow-2xl border border-red-500/30 text-center space-y-6 relative overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-600 via-red-500 to-red-600"></div>
-              
-              <div className="inline-flex p-4 rounded-full bg-red-500/10 text-red-500 border border-red-500/25 animate-pulse mt-4">
+          {/* VALIDACIÓN DE CERTIFICADO VENCIDO (BLOQUEO COMERCIAL) */}
+          {selectedCar.estadoCertificado === "Vencido" ? (
+            <div className="bg-red-950/20 border-2 border-red-500/30 p-6 rounded-3xl text-center space-y-4 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-600 via-red-500 to-red-600 animate-pulse"></div>
+              <div className="inline-flex p-4 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 mb-2">
                 <Lock className="w-8 h-8" />
               </div>
-
-              <div className="space-y-2">
-                <span className="text-xs font-black uppercase tracking-wider text-red-400 block font-bold">
-                  🔴 Certificación Vencida
-                </span>
-                <h3 className="text-lg font-display font-extrabold text-white">
-                  Acceso Bloqueado
-                </h3>
-                <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-                  La visualización del certificado digital, el Score de confianza y la descarga en PDF están suspendidos por falta de pago. Renueva hoy mismo para reactivar el estatus de tu vehículo.
-                </p>
+              <h3 className="text-lg font-display font-black text-white">CERTIFICADO EXPIRADO</h3>
+              <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+                La visualización del Score mecánico, la descarga técnica y la auditoría cronológica están inhabilitadas por vencimiento de suscripción técnica.
+              </p>
+              
+              <div className="bg-black/50 p-4 rounded-xl border border-white/5 text-xs font-mono text-slate-400 space-y-1">
+                <div>Placa: <span className="text-amber-400 font-bold">{selectedCar.placa}</span></div>
+                <div>Vehículo: <span>{selectedCar.marca} {selectedCar.modelo}</span></div>
               </div>
 
-              <div className="bg-black/40 border border-white/5 rounded-xl p-4 text-xs text-slate-400 font-mono space-y-1">
-                <div>Vehículo: <strong className="text-slate-200">{selectedCar.marca} {selectedCar.modelo}</strong></div>
-                <div>Placa: <strong className="text-slate-200">{selectedCar.placa}</strong></div>
-              </div>
-
+              {/* Botón Rojo Parpadeante al WhatsApp del Admin */}
               <a
-                href={`https://wa.me/584120000000?text=${encodeURIComponent(
-                  `Hola AutoScore, deseo renovar el certificado digital de mi vehículo placa ${selectedCar?.placa} para activar mi Score Mecánico`
+                href={`https://wa.me/${adminPhoneEnv.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                  `Hola Administrador de AutoScore. Deseo pagar la renovación técnica del certificado para el vehículo placa ${selectedCar.placa} y reactivar mi Score de confianza.`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-extrabold text-xs py-3.5 px-4 rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/45 active:scale-[0.98] transition-all duration-200 border border-red-500/30 font-bold"
-                id="btn-renew-blocked-view"
+                className="w-full inline-flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl text-xs transition-all animate-pulse shadow-lg border border-red-500/30"
               >
-                Chatear para Renovar y Activar
+                <Phone className="w-4 h-4" />
+                <span>Pagar Renovación por WhatsApp</span>
               </a>
             </div>
-          </div>
-        );
-      }
-
-      return (
-        <div className="space-y-6">
-          {/* Botón volver */}
-          <button
-            onClick={handleBackToGarage}
-            className="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-400 font-bold uppercase tracking-wider no-print"
-            id="btn-cert-back"
-          >
-            <ChevronLeft className="w-4.5 h-4.5" />
-            Volver al Garaje
-          </button>
-
-          {/* Tarjeta del Certificado VIP */}
-          <div className={`relative rounded-3xl p-6 ${
-            activeCertType === "completo" 
-              ? "glass-panel-vip glow-gold" 
-              : "glass-panel backdrop-blur-md border-slate-500/30 glow-silver"
-          }`}>
-            
-            {/* Cabecera del Certificado */}
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
-                  activeCertType === "completo"
-                    ? "bg-amber-400/10 text-amber-400 border-amber-500/20"
-                    : "bg-slate-400/10 text-slate-400 border-slate-400/25"
-                }`}>
-                  <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
-                  Certificado {activeCertType.toUpperCase()}
-                </span>
-                <span className="block text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-1.5">
-                  Sello de Seguridad Electrónico
-                </span>
-              </div>
-              <Lock className={`w-5 h-5 ${activeCertType === "completo" ? "text-amber-500" : "text-slate-400"}`} />
-            </div>
-
-            {/* Datos Técnicos y Puntuación Mecánica (Score) */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-6 bg-black/40 p-5 rounded-2xl border border-white/5 mb-6">
-              <div className="text-center sm:text-left">
-                <span className="text-[10px] text-slate-500 font-mono font-medium block">VEHÍCULO HOMOLOGADO</span>
-                <h3 className="text-xl font-display font-extrabold text-white mt-0.5 leading-tight">
-                  {selectedCar?.marca || "N/A"} {selectedCar?.modelo || ""}
-                </h3>
-                <span className="text-xs text-slate-400 font-light block">Año fabricación: {selectedCar?.anio || "N/A"}</span>
-                <div className="inline-block mt-2 bg-white/5 border border-white/10 text-xs font-mono font-bold px-3 py-0.5 rounded text-slate-300 tracking-wider">
-                  PLACA: {selectedCar?.placa || "N/A"}
-                </div>
-              </div>
-
-              {/* Score Circular / Caja */}
-              <div className="flex flex-col items-center gap-3">
-                <div className={`w-32 h-32 rounded-full border-4 border-amber-600/20 flex flex-col items-center justify-center p-1 font-display relative ${getScoreColor(selectedCar?.score || 0)}`}>
-                  <div className="absolute inset-0 border-4 border-amber-500 rounded-full border-t-transparent animate-spin-slow opacity-30"></div>
-                  <span className="text-4xl font-black text-white leading-none">{selectedCar?.score ?? 0}</span>
-                  <span className="text-[10px] uppercase tracking-widest font-bold opacity-75 mt-1">SCORE</span>
-                </div>
-                <span className="text-[9px] text-slate-400 font-mono uppercase tracking-widest font-semibold text-center">CALIFICACIÓN MECÁNICA</span>
-                {getSaludMecanicaTag(selectedCar?.score ?? 0)}
-              </div>
-            </div>
-
-            {/* Parámetros Básicos */}
-            <div className="grid grid-cols-2 gap-4 mb-6 text-xs bg-black/30 p-4 rounded-xl border border-white/5">
-              <div>
-                <span className="text-slate-500 font-mono block">Estatus Certificado</span>
-                <span className="font-semibold inline-flex items-center gap-1 mt-0.5 text-emerald-400">
-                  <Award className="w-3.5 h-3.5" />
-                  {selectedCar?.estadoCertificado || "N/A"}
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-mono block">ID Dueño Vinculado</span>
-                <span className="font-semibold text-slate-200 mt-0.5 block truncate">
-                  {selectedCar?.idDueno || "N/A"}
-                </span>
-              </div>
-            </div>
-
-            {/* ---------------- LÍNEA DE TIEMPO (SOLO CERTIFICADO COMPLETO) ---------------- */}
-            {activeCertType === "completo" && (
-              <div className="mt-8">
-                <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-amber-500/90 mb-4 flex items-center gap-1.5">
-                  <ClipboardList className="w-4 h-4" />
-                  Línea de Tiempo Verificada ({historial.length})
-                </h4>
-                {renderTimeline()}
-              </div>
-            )}
-
-            {/* Mensaje de Oclusión de Historial (SOLO CERTIFICADO SIMPLE) */}
-            {activeCertType === "simple" && (
-              <div className="mt-4 p-4 bg-slate-950/80 border border-slate-900 rounded-2xl text-center">
-                <p className="text-xs text-slate-400 font-medium">
-                  Historial de reparaciones ocultado por privacidad.
-                </p>
-                <p className="text-[10px] text-slate-600 mt-1 leading-normal max-w-xs mx-auto">
-                  La versión simple certifica únicamente la autenticidad técnica y el score total. Solicita el Certificado Completo VIP si necesitas inspeccionar la línea de tiempo.
-                </p>
-                <button
-                  onClick={() => handleVerCertificado(selectedCar, "completo")}
-                  className="mt-3 inline-flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Emitir Certificado Completo VIP
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Botón Descargar PDF */}
-          <button
-            onClick={() => window.print()}
-            className="w-full bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-slate-950 font-extrabold py-4 px-6 rounded-2xl shadow-xl hover:shadow-amber-500/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 no-print"
-            id="btn-download-pdf"
-          >
-            <Download className="w-5 h-5 shrink-0 text-slate-950" />
-            Descargar Certificado Oficial (PDF)
-          </button>
-        </div>
-      );
-    }
-
-    // ---------------- PANTALLA: GENERADOR DE QR DIGITAL ----------------
-    if (selectedCar && mostrarQR) {
-      return (
-        <div className="glass-panel p-6 text-center shadow-xl animate-fade-in">
-          <h3 className="text-lg font-display font-extrabold text-white">QR de AutoScore</h3>
-          <p className="text-xs text-slate-400 mt-1 leading-normal max-w-xs mx-auto">
-            Muestra este código al técnico certificado en el taller para escanear y cargar nuevos mantenimientos al historial.
-          </p>
-
-          {/* Generador de QR real usando qrserver */}
-          <div className="bg-white p-4 rounded-2xl inline-block my-6 border border-amber-500/30 shadow-md">
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&color=080c14&data=${encodeURIComponent(selectedCar.placa)}`}
-              alt={`QR Placa ${selectedCar.placa}`}
-              className="w-48 h-48 block mx-auto"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-
-          <div className="mb-6">
-            <span className="text-[10px] font-mono text-slate-500 block uppercase tracking-wider">PLACA VEHICULAR</span>
-            <div className="inline-block bg-slate-950 border-2 border-slate-700 rounded-lg px-4 py-1.5 text-xl font-mono font-black text-white tracking-widest mt-1">
-              {selectedCar.placa}
-            </div>
-          </div>
-
-          <div className="bg-slate-950/60 p-3.5 border border-slate-800 rounded-xl text-xs text-left text-slate-400 leading-normal mb-6">
-            <div className="flex gap-2">
-              <Shield className="w-4 h-4 text-amber-500 shrink-0" />
-              <span>
-                <strong>Privacidad garantizada:</strong> El código QR solo contiene la placa en texto plano para indexación rápida del escáner del técnico. Ningún dato personal es expuesto en la lectura.
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleBackToGarage}
-            className="w-full bg-slate-950 hover:bg-slate-850 text-slate-200 hover:text-white border border-slate-800 rounded-xl py-3 font-semibold text-xs transition-all active:scale-[0.98]"
-            id="btn-qr-back"
-          >
-            Volver a Mi Garaje
-          </button>
-        </div>
-      );
-    }
-
-    // ---------------- COMPONENTE MODAL / ACCIONES DEL CARRO ----------------
-    if (selectedCar && mostrarOpciones) {
-      return (
-        <div className="glass-panel p-6 shadow-2xl relative">
-          <button
-            onClick={handleBackToGarage}
-            className="absolute top-4 right-4 text-slate-400 hover:text-white"
-          >
-            ✕
-          </button>
-
-          <div className="text-center mb-6">
-            <span className="text-xs text-amber-500 font-mono tracking-wider block">{(selectedCar?.marca || "Vehículo").toUpperCase()} {selectedCar?.modelo || ""}</span>
-            <h3 className="text-lg font-display font-bold text-white mt-0.5">Opciones de Certificado</h3>
-            <p className="text-xs text-slate-400 mt-1">Selecciona la versión del certificado que deseas emitir en pantalla.</p>
-          </div>
-
-          <div className="space-y-3">
-            <button
-              onClick={() => handleVerCertificado(selectedCar, "simple")}
-              className="w-full text-left bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl p-4 transition-all"
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-slate-400" />
-                  <span className="font-semibold text-slate-200 text-sm">Ver Certificado Simple</span>
-                </div>
-                <span className="text-[10px] uppercase font-mono text-slate-400">Gratis / Rápido</span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                Muestra la calificación de Score de confianza, vigencia y datos homologados. Oculta la línea de tiempo de reparaciones para mayor confidencialidad.
-              </p>
-            </button>
-
-            {isVencido ? (
-              <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-center space-y-3.5 no-print">
-                <p className="text-xs text-red-400 font-extrabold leading-normal">
-                  🔴 Certificación Vencida - Renovar Aquí para activar su Score
-                </p>
-                <a
-                  href={`https://wa.me/584120000000?text=${encodeURIComponent(
-                    `Hola AutoScore, deseo renovar el certificado digital de mi vehículo placa ${selectedCar?.placa} para activar mi Score Mecánico`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-extrabold text-xs py-2.5 px-4 rounded-xl shadow-lg shadow-red-500/10 active:scale-[0.98] transition-all border border-red-500/30"
-                >
-                  Contactar por WhatsApp
-                </a>
-              </div>
-            ) : (
-              <button
-                onClick={() => handleVerCertificado(selectedCar, "completo")}
-                className="w-full text-left bg-white/5 hover:bg-white/10 border border-amber-500/30 hover:border-amber-500/50 rounded-xl p-4 transition-all"
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="font-semibold text-amber-400 text-sm">Ver Certificado Completo VIP</span>
-                  </div>
-                  <span className="text-[10px] uppercase font-mono text-amber-500 font-bold">Premium</span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
-                  Desglosa el Score, datos de homologación y la <strong>línea de tiempo cronológica completa</strong> de mantenimientos realizados por técnicos calificados con firma y taller verificado.
-                </p>
-              </button>
-            )}
-          </div>
-
-          <button
-            onClick={handleBackToGarage}
-            className="w-full mt-4 py-2.5 text-xs text-slate-400 hover:text-white font-medium transition-colors text-center border border-white/10 rounded-xl hover:bg-white/5"
-          >
-            Volver al Garaje
-          </button>
-        </div>
-      );
-    }
-
-    // ---------------- PANTALLA: GARAJE VIRTUAL (VEHÍCULOS ENCONTRADOS) ----------------
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-              PROPIETARIO ACTIVO
-            </span>
-            <h2 className="text-xl font-display font-extrabold text-white mt-1.5 truncate max-w-[240px]">
-              ID: {loggedDueno}
-            </h2>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="text-xs bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2.5 py-1.5 font-medium transition-colors"
-            id="btn-logout-usuario"
-          >
-            Cerrar Sesión
-          </button>
-        </div>
-
-        <div className="bg-white/5 p-3.5 border border-white/5 rounded-xl flex items-center justify-between text-xs backdrop-blur-sm">
-          <div className="flex flex-col gap-1">
-            <span className="text-slate-400">Total carros en garaje:</span>
-            <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 w-fit">
-              {vehiculos.length} {vehiculos.length === 1 ? "vehículo" : "vehículos"}
-            </span>
-          </div>
-          <button
-            onClick={() => setMostrarFormRegistro(!mostrarFormRegistro)}
-            className="text-xs bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-2 rounded-xl transition-colors flex items-center gap-1 shadow-md"
-            id="btn-show-register-car"
-          >
-            {mostrarFormRegistro ? "Cerrar Registro" : "+ Registrar Vehículo"}
-          </button>
-        </div>
-
-        {/* Formulario de registro de vehículo */}
-        {mostrarFormRegistro && (
-          <form onSubmit={handleRegistrarVehiculo} className="glass-panel p-5 border border-amber-500/30 space-y-4 animate-fade-in">
-            <div className="flex justify-between items-center border-b border-white/10 pb-2.5">
-              <h3 className="text-xs font-mono font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
-                <Car className="w-4 h-4 text-amber-500" />
-                Registrar Nuevo Vehículo
-              </h3>
-              <button
-                type="button"
-                onClick={() => setMostrarFormRegistro(false)}
-                className="text-xs text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                  Placa (ID Único):
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: AB123CD"
-                  value={nuevaPlaca}
-                  onChange={(e) => setNuevaPlaca(e.target.value.toUpperCase())}
-                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-amber-400 font-mono font-bold tracking-widest uppercase focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                  Año de Fabricación:
-                </label>
-                <input
-                  type="number"
-                  required
-                  placeholder="Ej: 2018"
-                  value={nuevoAnio}
-                  onChange={(e) => setNuevoAnio(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                  Marca:
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Toyota"
-                  value={nuevaMarca}
-                  onChange={(e) => setNuevaMarca(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                  Modelo:
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Corolla"
-                  value={nuevoModelo}
-                  onChange={(e) => setNuevoModelo(e.target.value)}
-                  className="w-full glass-input rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-
-            <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Calificación Inicial (AutoScore):
-                </span>
-                <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                  Cálculo Automatizado ✨
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-400 max-w-[70%]">
-                  {nuevoAnio ? (
-                    `Calculado según el año de fabricación (${nuevoAnio}). Se calcula restando antigüedad del puntaje base (100).`
-                  ) : (
-                    "Ingrese un año de fabricación para calcular el AutoScore inicial de confianza."
-                  )}
-                </p>
-                <div className="text-right">
-                  <span className="text-lg font-mono font-black text-amber-400 block">
-                    {calcularScoreAutomatico(nuevoAnio)} pts
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {errorRegistro && (
-              <div className="p-2.5 rounded-xl bg-red-950/20 border border-red-900/30 text-red-400 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{errorRegistro}</span>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={registrandoVehiculo}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {registrandoVehiculo ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Car className="w-4 h-4" />
-                  Homologar y Registrar Vehículo
-                </>
-              )}
-            </button>
-          </form>
-        )}
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-950/20 border border-red-900/30 text-red-400 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Lista de vehículos */}
-        <div className="space-y-4">
-          {vehiculos.length === 0 ? (
-            <div className="text-center py-10 bg-slate-900/40 border border-slate-800 rounded-2xl p-4">
-              <Car className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-400">No tienes ningún carro registrado en este ID.</p>
-              
-              <button
-                onClick={() => setMostrarFormRegistro(true)}
-                className="mt-3 text-[11px] text-amber-400 underline font-semibold hover:text-amber-300 block mx-auto"
-              >
-                ¿Quieres registrar un vehículo ahora? Haz clic aquí
-              </button>
-
-              {useSimulado && (
-                <div className="mt-4 pt-4 border-t border-white/5">
-                  <p className="text-[10px] text-slate-500 mb-2">O usa la opción demo rápida del simulador:</p>
-                  <button
-                    onClick={() => {
-                      const demoCar = {
-                        placa: "AB123CD",
-                        marca: "Toyota",
-                        modelo: "Corolla",
-                        anio: 2018,
-                        idDueno: loggedDueno || "",
-                        score: 94,
-                        estadoCertificado: "Activo" as const
-                      };
-                      import("../mockData").then((m) => {
-                        m.simularRegistrarVehiculo(demoCar);
-                        setVehiculos([demoCar]);
-                      });
-                    }}
-                    className="mt-1 text-[11px] text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg border border-white/10 transition-all inline-flex items-center gap-1"
-                  >
-                    Auto-registrar carro demo (Toyota Corolla)
-                  </button>
-                </div>
-              )}
-            </div>
           ) : (
-            (vehiculos || [])
-              .filter((car) => car && typeof car === "object" && car.placa)
-              .map((car) => (
-                <div
-                  key={car.placa}
-                  className="bg-white/5 border border-white/10 rounded-2xl p-5 shadow-lg relative overflow-hidden group hover:border-white/20 hover:bg-white/10 transition-all backdrop-blur-sm"
-                >
-                  {/* Etiqueta de Certificado */}
-                  <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                      (car.estadoCertificado || "Activo") === "Activo"
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        : "bg-red-500/10 text-red-400 border-red-500/20"
-                    }`}>
-                      Cert: {car.estadoCertificado || "Activo"}
-                    </span>
+            // CERTIFICADO VÁLIDO (SIMPLE O COMPLETO)
+            <div className="space-y-4">
+              
+              {/* Contenedor Físico del Certificado */}
+              <div className={`relative rounded-3xl p-5 border overflow-hidden ${
+                activeCertType === "completo"
+                  ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
+                  : "bg-gradient-to-b from-slate-900/60 to-slate-950/90 border-white/10 shadow-xl"
+              }`}>
+                
+                {/* MARCA DE AGUA DIGITAL EN FONDO SATINADO (SOLO COMPLETO) */}
+                {activeCertType === "completo" && (
+                  <div className="absolute inset-0 pointer-events-none select-none overflow-hidden opacity-[0.03] flex items-center justify-center">
+                    <div className="text-[52px] font-black text-amber-500 tracking-widest uppercase rotate-[-30deg] whitespace-nowrap leading-none space-y-8 select-none">
+                      <div>AUTOSCORE CERTIFIED</div>
+                      <div>VERIFICADO VIP</div>
+                      <div>AUTOSCORE CERTIFIED</div>
+                    </div>
                   </div>
+                )}
 
-                  <div className="mb-4">
-                    <span className="text-[10px] font-mono font-bold text-slate-500 block">
-                      {(car.marca || "Marca Desconocida").toUpperCase()}
+                {/* Sello de Autenticidad */}
+                <div className="flex justify-between items-start mb-5 relative z-10">
+                  <div>
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
+                      activeCertType === "completo"
+                        ? "bg-amber-400/10 text-amber-400 border-amber-500/20"
+                        : "bg-slate-400/10 text-slate-400 border-slate-400/20"
+                    }`}>
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>Certificado {activeCertType.toUpperCase()}</span>
                     </span>
-                    <h3 className="text-lg font-display font-extrabold text-white">
-                      {car.modelo || "Modelo Desconocido"} <span className="text-slate-400 font-light text-sm">({car.anio || "N/A"})</span>
-                    </h3>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <div className="bg-black/40 border border-white/10 font-mono text-xs font-bold tracking-widest px-3 py-1 rounded text-slate-300">
-                        {car.placa || "S/P"}
+                    <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mt-1">Sello Oficial Inalterable</span>
+                  </div>
+                  <Shield className={`w-5 h-5 ${activeCertType === "completo" ? "text-amber-500" : "text-slate-400"}`} />
+                </div>
+
+                {/* Caja de Datos y Score en Grande */}
+                <div className="bg-black/50 border border-white/5 rounded-2xl p-4 space-y-4 relative z-10">
+                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="text-center sm:text-left">
+                      <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider block">UNIDAD EVALUADA</span>
+                      <h4 className="text-lg font-display font-black text-white mt-0.5 leading-tight">{selectedCar.marca} {selectedCar.modelo}</h4>
+                      <span className="text-xs text-slate-400 font-light block">Año fabricación: {selectedCar.anio}</span>
+                      <div className="inline-block bg-slate-900 border border-white/10 font-mono text-xs font-bold tracking-widest px-3 py-1 rounded text-slate-300 mt-2">
+                        PLACA: {selectedCar.placa}
                       </div>
-                      {(car.estadoCertificado || "Activo") === "Activo" && (
-                        <div className="text-[10px] font-bold uppercase tracking-wider">
-                          {car.score >= 90 ? (
-                            <span className="text-emerald-400">🟢 AL DÍA ({car.score})</span>
-                          ) : car.score >= 70 ? (
-                            <span className="text-amber-400">🟡 RETRASADO ({car.score})</span>
-                          ) : (
-                            <span className="text-red-400 animate-pulse">🔴 ALERTA MECÁNICA ({car.score})</span>
-                          )}
+                    </div>
+
+                    <div className="flex flex-col items-center">
+                      <div className={`w-28 h-28 rounded-full border-4 border-amber-500/10 flex flex-col items-center justify-center ${getScoreColor(selectedCar.score)}`}>
+                        <span className="text-3xl font-black text-white leading-none">{selectedCar.score}</span>
+                        <span className="text-[9px] font-bold tracking-widest uppercase opacity-75 mt-1">SCORE</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-2 font-black uppercase tracking-wider">
+                        {getSaludMecanicaTag(selectedCar.score)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bloque QR de Firma Técnica Integrado en el Certificado / Hoja del Vehículo */}
+                <div className="mt-4 p-4 bg-emerald-950/25 border border-emerald-500/20 rounded-2xl relative z-10 text-left">
+                  <div className="flex items-center gap-3 mb-2.5">
+                    <PenTool className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                    <div>
+                      <h5 className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 leading-none">REGISTRO DE FIRMA TÉCNICA</h5>
+                      <span className="text-[8px] text-slate-400 block mt-0.5">Escáner rápido para el mecánico o taller de confianza</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/40 p-3 rounded-xl border border-emerald-500/10">
+                    <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
+                      <img
+                        src={generateMecanicoQRCodeUrl()}
+                        alt="QR Firma Técnico"
+                        className="w-20 h-20 block"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+                    <div className="space-y-1.5 text-center sm:text-left">
+                      <span className="inline-block text-[9px] font-mono font-black text-white bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded uppercase">
+                        Placa: {selectedCar.placa}
+                      </span>
+                      <p className="text-[11px] text-slate-300 leading-tight font-bold">
+                        Escanear para firmar reparaciones en este vehículo
+                      </p>
+                      <p className="text-[9px] text-slate-400 leading-normal">
+                        Pre-carga automáticamente los datos del <strong>{selectedCar.marca} {selectedCar.modelo} ({selectedCar.anio})</strong> para registrar su firma digital y actualizar su score de salud mecánica de forma instantánea.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* LÍNEA DE TIEMPO COMPLETA (SOLO CERTIFICADO COMPLETO) */}
+                {activeCertType === "completo" && (
+                  <div className="mt-6 space-y-4 relative z-10">
+                    <h5 className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-500 flex items-center gap-1.5 border-b border-white/5 pb-2">
+                      <ClipboardList className="w-4 h-4" />
+                      <span>Línea de Tiempo Verificada ({historial.length})</span>
+                    </h5>
+
+                    <div className="space-y-4 max-h-[280px] overflow-y-auto pr-1">
+                      {historial.map((row, idx) => (
+                        <div key={idx} className="border-l-2 border-amber-500 pl-3 py-1 relative">
+                          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
+                            <span>{row.fecha.split(" ")[0]}</span>
+                            <span className="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.2 rounded">{row.kilometraje.toLocaleString()} km</span>
+                          </div>
+                          <p className="text-xs text-slate-200 mt-1 leading-normal font-light">{row.trabajoRealizado}</p>
+                          
+                          {/* Botón de Trazabilidad Clicable (Taller verde) */}
+                          <div className="mt-2 flex justify-between items-center">
+                            <button
+                              onClick={() => setActiveTecnicoModal({
+                                taller: row.taller,
+                                codigo: row.codigoMecanico,
+                                telefono: row.telefonoMecanico,
+                                fecha: row.fecha,
+                                kilometraje: row.kilometraje,
+                                trabajo: row.trabajoRealizado
+                              })}
+                              className="text-[9px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/5 hover:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 transition-all flex items-center gap-1"
+                            >
+                              <CheckCircle className="w-3 h-3 text-emerald-500 shrink-0" />
+                              <span>Verificar Taller: {row.taller}</span>
+                            </button>
+                            <span className="text-[9px] font-mono text-slate-500">Firma: #{row.codigoMecanico}</span>
+                          </div>
                         </div>
+                      ))}
+                      {historial.length === 0 && (
+                        <p className="text-xs text-slate-500 text-center py-4">No se han firmado mantenimientos técnicos aún.</p>
                       )}
                     </div>
                   </div>
+                )}
 
-                  <div className="pt-3.5 border-t border-white/10">
-                    {car.estadoCertificado?.toUpperCase() === "VENCIDO" ? (
-                      <a
-                        href={`https://wa.me/584120000000?text=${encodeURIComponent(
-                          `Hola AutoScore, deseo renovar el certificado digital de mi vehículo placa ${car.placa} para activar mi Score Mecánico`
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-extrabold text-xs py-3 px-4 rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/40 active:scale-[0.98] transition-all duration-200 animate-pulse text-center border border-red-500/30 font-bold"
-                        id={`btn-renew-${car.placa}`}
-                      >
-                        🔴 Certificación Vencida - Renovar Aquí para activar su Score
-                      </a>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Botón ver Opciones */}
-                        <button
-                          onClick={() => {
-                            setSelectedCar(car);
-                            setMostrarOpciones(true);
-                          }}
-                          className="w-full bg-white/5 hover:bg-white/10 text-slate-200 hover:text-white border border-white/10 rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <ClipboardList className="w-3.5 h-3.5" />
-                          Certificados
-                        </button>
-
-                        {/* Botón QR */}
-                        <button
-                          onClick={() => {
-                            setSelectedCar(car);
-                            setMostrarQR(true);
-                          }}
-                          className="w-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/20 rounded-xl py-2 px-3 text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          Código QR
-                        </button>
-                      </div>
-                    )}
+                {/* INFORMACIÓN SIMPLE (OCULTA LÍNEA DE TIEMPO) */}
+                {activeCertType === "simple" && (
+                  <div className="mt-5 p-4 bg-slate-950/60 border border-white/5 rounded-2xl text-center relative z-10 space-y-1">
+                    <p className="text-xs text-slate-400 font-semibold leading-normal">Línea de Tiempo detallada oculta por privacidad personal.</p>
+                    <p className="text-[10px] text-slate-600 max-w-[80%] mx-auto leading-normal">
+                      La versión simple está bloqueada para compartirse y no genera ningún tipo de link ni QR de acceso externo.
+                    </p>
                   </div>
+                )}
+              </div>
+
+              {/* OPCIONES DE COMPARTIR INTERACTIVAS (SOLO COMPLETO) */}
+              {activeCertType === "completo" && (
+                <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl space-y-3.5 no-print">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">COMPARTIR CERTIFICADO PRESTIGIO</span>
+                  
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Opción A: Copiar Enlace Digital */}
+                    <button
+                      onClick={copyPublicLink}
+                      className="bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold p-3 rounded-xl text-xs transition-all flex flex-col items-center justify-center text-center gap-1.5"
+                    >
+                      {copiedLink ? <Check className="w-5 h-5 text-emerald-400" /> : <Copy className="w-5 h-5 text-amber-500" />}
+                      <div>
+                        <span className="block font-black leading-tight text-white">Copiar Enlace</span>
+                        <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Comprador a distancia</span>
+                      </div>
+                    </button>
+
+                    {/* Opción B: Mostrar QR de Certificación */}
+                    <button
+                      onClick={() => {
+                        setShowFaceToFaceQR(!showFaceToFaceQR);
+                        setShowMecanicoQR(false);
+                      }}
+                      className="bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-bold p-3 rounded-xl text-xs transition-all flex flex-col items-center justify-center text-center gap-1.5"
+                    >
+                      <QrCode className="w-5 h-5 text-amber-400" />
+                      <div>
+                        <span className="block font-black leading-tight">Mostrar QR de Venta</span>
+                        <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Comprador en persona</span>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Opción C: QR para Firmar Reparaciones (Mecánico) */}
+                  <button
+                    onClick={() => {
+                      setShowMecanicoQR(!showMecanicoQR);
+                      setShowFaceToFaceQR(false);
+                    }}
+                    className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 font-bold p-3 rounded-xl text-xs transition-all flex items-center justify-center gap-3"
+                  >
+                    <PenTool className="w-5 h-5 text-emerald-400" />
+                    <div className="text-left">
+                      <span className="block font-black leading-tight text-white">Generar QR para Mecánico</span>
+                      <span className="block text-[9px] font-normal text-slate-400 mt-0.5">Para que el mecánico firme la reparación desde su celular</span>
+                    </div>
+                  </button>
+
+                  {/* CÓDIGO QR EN GRANDE PARA COMPRADOR EN FRENTE */}
+                  {showFaceToFaceQR && (
+                    <div className="p-4 bg-slate-950 border border-amber-500/20 rounded-2xl text-center space-y-3.5 animate-fade-in">
+                      <div className="bg-white p-3.5 rounded-2xl inline-block shadow-lg border border-slate-800">
+                        <img
+                          src={generateQRCodeUrl()}
+                          alt="QR Enlace Digital de Venta"
+                          className="w-48 h-48 block mx-auto"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-300 leading-normal max-w-[85%] mx-auto">
+                        <strong>Escaneo Directo:</strong> El comprador enfrente puede escanear este QR con su cámara para abrir el Certificado Oficial Completo en su propio celular sin instalar nada.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* CÓDIGO QR EN GRANDE PARA EL MECÁNICO */}
+                  {showMecanicoQR && (
+                    <div className="p-4 bg-slate-950 border border-emerald-500/20 rounded-2xl text-center space-y-3.5 animate-fade-in">
+                      <div className="bg-white p-3.5 rounded-2xl inline-block shadow-lg border border-slate-800">
+                        <img
+                          src={generateMecanicoQRCodeUrl()}
+                          alt="QR Firma Técnico"
+                          className="w-48 h-48 block mx-auto"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-300 leading-normal max-w-[85%] mx-auto">
+                        <strong>Firma Técnica:</strong> El mecánico puede escanear este QR con su teléfono para ingresar directamente al panel de firma técnica con la placa <strong>{selectedCar.placa}</strong> precargada de forma segura.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              ))
+              )}
+
+              {/* Botón Imprimir / Guardar en PDF para dueño */}
+              <button
+                onClick={() => window.print()}
+                className="w-full bg-slate-950 hover:bg-slate-900 border border-white/5 py-3 rounded-2xl text-xs text-slate-300 hover:text-white font-bold text-center flex items-center justify-center gap-2 no-print shadow-md"
+              >
+                <Download className="w-4.5 h-4.5" />
+                <span>Imprimir / Descargar en PDF</span>
+              </button>
+            </div>
           )}
         </div>
-      </div>
-    );
-  };
+      )}
 
-  return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 animate-fade-in text-slate-100">
-      {renderContent()}
+      {/* MODAL FLOTANTE DE TRAZABILIDAD (VERIFICAR TALLER REAL) */}
+      {activeTecnicoModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in no-print">
+          <div className="bg-[#0b0c10] border border-emerald-500/30 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
+            <button
+              onClick={() => setActiveTecnicoModal(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold"
+            >
+              ✕
+            </button>
+
+            <div className="text-center border-b border-white/5 pb-3">
+              <div className="inline-flex p-3 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-2.5">
+                <Shield className="w-6 h-6" />
+              </div>
+              <h4 className="text-base font-display font-extrabold text-white">Taller Firmante Autorizado</h4>
+              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Sello Digital: #{activeTecnicoModal.codigo}</p>
+            </div>
+
+            <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
+              <div>Establecimiento: <strong className="text-white block mt-0.5">{activeTecnicoModal.taller}</strong></div>
+              <div className="pt-2 border-t border-white/5 mt-2">
+                <span>Reparación Certificada:</span>
+                <p className="text-[11px] text-slate-400 leading-normal font-light mt-1 bg-black/40 p-2 rounded-lg border border-white/5">
+                  "{activeTecnicoModal.trabajo}"
+                </p>
+              </div>
+              <div className="pt-2 border-t border-white/5 mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                <div>Fecha: <span className="text-white block font-mono">{activeTecnicoModal.fecha.split(" ")[0]}</span></div>
+                <div>Kilometraje: <span className="text-white block font-mono">{activeTecnicoModal.kilometraje.toLocaleString()} km</span></div>
+              </div>
+            </div>
+
+            {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN */}
+            {activeTecnicoModal.telefono ? (
+              <a
+                href={`https://wa.me/${activeTecnicoModal.telefono.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
+                  `Hola ${activeTecnicoModal.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y tiene registrado en AutoScore un mantenimiento firmado por ustedes el día ${activeTecnicoModal.fecha.split(" ")[0]} con ${activeTecnicoModal.kilometraje} km ("${activeTecnicoModal.trabajo}"). ¿Podrían corroborar de celular a celular la validez de este trabajo en su taller? Muchas gracias.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg"
+              >
+                <Phone className="w-4 h-4 shrink-0" />
+                <span>Corroborar con el Taller</span>
+              </a>
+            ) : (
+              <p className="text-[10px] text-slate-500 text-center leading-normal">
+                Este mecánico/taller independiente no ha configurado su WhatsApp de contacto. Puede contactar al administrador para validación manual de la orden.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

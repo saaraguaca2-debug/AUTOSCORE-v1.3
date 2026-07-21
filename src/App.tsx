@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  Shield, Car, PenTool, BookOpen, ChevronRight, Home, Info, HelpCircle, AlertCircle, Sparkles, Check
+  Shield, Car, PenTool, BookOpen, ChevronRight, Home, Info, HelpCircle, AlertCircle, Sparkles, Check, Lock
 } from "lucide-react";
 import { VistaActual } from "./types";
 import { inicializarBaseDatosSimulada } from "./mockData";
@@ -14,6 +14,7 @@ import InicioView from "./components/InicioView";
 import UsuarioView from "./components/UsuarioView";
 import MecanicoView from "./components/MecanicoView";
 import SoporteView from "./components/SoporteView";
+import AdminView from "./components/AdminView";
 
 export default function App() {
   // Inicializar base de datos de simulación al montar la aplicación
@@ -50,6 +51,21 @@ export default function App() {
 
   // Enrutamiento mediante Estado de React (Instantáneo y óptimo para móviles)
   const [currentView, setCurrentView] = useState<VistaActual>("home");
+
+  // Detectar parámetros de la URL para enrutamiento automático en el arranque (QR / Links Públicos)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("placa")) {
+      const vistaParam = params.get("vista");
+      if (vistaParam === "mecanico") {
+        setCurrentView("mecanico");
+      } else {
+        setCurrentView("usuario");
+      }
+    } else if (params.get("vista") === "mecanico") {
+      setCurrentView("mecanico");
+    }
+  }, []);
 
   // Función para transicionar vistas suavemente
   const navegarA = (vista: VistaActual) => {
@@ -105,6 +121,8 @@ export default function App() {
                   return <UsuarioView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
                 case "mecanico":
                   return <MecanicoView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
+                case "admin":
+                  return <AdminView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
                 case "documentacion":
                   return <SoporteView onNavigate={navegarA} />;
                 default:
@@ -154,6 +172,19 @@ export default function App() {
         >
           <PenTool className="w-5 h-5 stroke-[2]" />
           <span className="text-[10px]">Técnico</span>
+        </button>
+
+        <div className="w-[1px] h-6 bg-slate-800" />
+
+        <button
+          onClick={() => navegarA("admin")}
+          className={`flex flex-col items-center gap-1 transition-all ${
+            currentView === "admin" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
+          }`}
+          id="dock-btn-admin"
+        >
+          <Lock className="w-5 h-5 stroke-[2]" />
+          <span className="text-[10px]">Admin</span>
         </button>
 
         <div className="w-[1px] h-6 bg-slate-800" />

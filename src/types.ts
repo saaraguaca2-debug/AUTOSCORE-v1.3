@@ -3,6 +3,7 @@ export interface Mecanico {
   nombre: string;
   taller: string;
   estado: "Activo" | "Suspendido";
+  telefono?: string;
 }
 
 export interface Vehiculo {
@@ -23,6 +24,7 @@ export interface HistorialRow {
   codigoMecanico: string;
   taller: string;
   trabajoRealizado: string;
+  telefonoMecanico?: string;
 }
 
-export type VistaActual = "home" | "usuario" | "mecanico" | "documentacion";
+export type VistaActual = "home" | "usuario" | "mecanico" | "documentacion" | "admin";

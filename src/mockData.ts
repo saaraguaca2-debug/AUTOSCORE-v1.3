@@ -1,24 +1,50 @@
 import { Mecanico, Vehiculo, HistorialRow } from "./types";
 
-// Datos iniciales de mecánicos (uno Activo y otro Suspendido para probar reglas de negocio)
+// Tipos adicionales para el flujo de login y base de datos local completa
+export interface UsuarioPropietario {
+  idDueno: string;
+  nombre: string;
+  contrasena: string;
+  estadoUsuario: "Aprobado" | "Pendiente" | "Rechazado";
+}
+
+const MOCK_USUARIOS_INICIAL: UsuarioPropietario[] = [
+  {
+    idDueno: "26123456",
+    nombre: "Pedro Pérez",
+    contrasena: "123456",
+    estadoUsuario: "Aprobado"
+  },
+  {
+    idDueno: "12987654",
+    nombre: "María Rodríguez",
+    contrasena: "contrasena",
+    estadoUsuario: "Pendiente"
+  }
+];
+
+// Datos iniciales de mecánicos con teléfono para contacto de seguridad
 const MOCK_MECANICOS: Mecanico[] = [
   {
     codigoMecanico: "M101",
     nombre: "Carlos Mendoza",
     taller: "Mendoza Motors (Altamira)",
-    estado: "Activo"
+    estado: "Activo",
+    telefono: "584121111111"
   },
   {
     codigoMecanico: "M202",
     nombre: "José Rodríguez",
     taller: "Rodríguez Performance (Boleíta)",
-    estado: "Suspendido" // Para probar bloqueo de membresía por falta de pago
+    estado: "Suspendido", // Prueba bloqueo de membresía por falta de pago
+    telefono: "584142222222"
   },
   {
     codigoMecanico: "M303",
     nombre: "Valentina Gómez",
     taller: "Caracas Tuning Lab (Chacao)",
-    estado: "Activo"
+    estado: "Activo",
+    telefono: "584243333333"
   }
 ];
 
@@ -30,16 +56,16 @@ const MOCK_VEHICULOS: Vehiculo[] = [
     modelo: "Corolla",
     anio: 2018,
     idDueno: "26123456",
-    score: 94,
+    score: 98, // Score inicial de inspección técnica
     estadoCertificado: "Activo"
   },
   {
     placa: "EF456GH",
     marca: "Jeep",
-    modelo: "Grand Cherokee Laredo",
+    modelo: "Grand Cherokee",
     anio: 2015,
     idDueno: "26123456",
-    score: 78,
+    score: 85,
     estadoCertificado: "Activo"
   },
   {
@@ -48,8 +74,8 @@ const MOCK_VEHICULOS: Vehiculo[] = [
     modelo: "Aveo LT",
     anio: 2011,
     idDueno: "26123456",
-    score: 45,
-    estadoCertificado: "Vencido"
+    score: 90,
+    estadoCertificado: "Vencido" // Provoca bloqueo comercial por falta de pago
   },
   {
     placa: "XY987ZT",
@@ -76,7 +102,7 @@ const MOCK_HISTORIAL: HistorialRow[] = [
   {
     idHistorial: 10002,
     placa: "AB123CD",
-    fecha: "2026-01-15 09:15:00",
+    fecha: "2026-06-15 09:15:00",
     kilometraje: 42000,
     codigoMecanico: "M303",
     taller: "Caracas Tuning Lab (Chacao)",
@@ -105,11 +131,12 @@ const MOCK_HISTORIAL: HistorialRow[] = [
 // Función para inicializar el LocalStorage si no tiene datos cargados
 export function inicializarBaseDatosSimulada() {
   if (!localStorage.getItem("autoscore_inicializado")) {
+    localStorage.setItem("autoscore_usuarios", JSON.stringify(MOCK_USUARIOS_INICIAL));
     localStorage.setItem("autoscore_mecanicos", JSON.stringify(MOCK_MECANICOS));
     localStorage.setItem("autoscore_vehiculos", JSON.stringify(MOCK_VEHICULOS));
     localStorage.setItem("autoscore_historial", JSON.stringify(MOCK_HISTORIAL));
     localStorage.setItem("autoscore_inicializado", "true");
-    console.log("AutoScore: Base de datos local simulada inicializada correctamente.");
+    console.log("AutoScore DB local inicializada con éxito.");
   }
 }
 
@@ -117,6 +144,7 @@ export function inicializarBaseDatosSimulada() {
 export function getSimulatedData() {
   inicializarBaseDatosSimulada();
   return {
+    usuarios: JSON.parse(localStorage.getItem("autoscore_usuarios") || "[]") as UsuarioPropietario[],
     mecanicos: JSON.parse(localStorage.getItem("autoscore_mecanicos") || "[]") as Mecanico[],
     vehiculos: JSON.parse(localStorage.getItem("autoscore_vehiculos") || "[]") as Vehiculo[],
     historial: JSON.parse(localStorage.getItem("autoscore_historial") || "[]") as HistorialRow[]
@@ -124,7 +152,13 @@ export function getSimulatedData() {
 }
 
 // Guardar datos actualizados
-export function saveSimulatedData(data: { mecanicos: Mecanico[]; vehiculos: Vehiculo[]; historial: HistorialRow[] }) {
+export function saveSimulatedData(data: {
+  usuarios: UsuarioPropietario[];
+  mecanicos: Mecanico[];
+  vehiculos: Vehiculo[];
+  historial: HistorialRow[];
+}) {
+  localStorage.setItem("autoscore_usuarios", JSON.stringify(data.usuarios));
   localStorage.setItem("autoscore_mecanicos", JSON.stringify(data.mecanicos));
   localStorage.setItem("autoscore_vehiculos", JSON.stringify(data.vehiculos));
   localStorage.setItem("autoscore_historial", JSON.stringify(data.historial));
@@ -134,10 +168,65 @@ export function saveSimulatedData(data: { mecanicos: Mecanico[]; vehiculos: Vehi
  * SIMULACIÓN DE ENDPOINTS DEL BACKEND GOOGLE APPS SCRIPT
  */
 
-// Buscar por idDueno
+// Simular Login
+export function simularLogin(idDueno: string, contrasena: string) {
+  const data = getSimulatedData();
+  const cleanId = idDueno.trim().toLowerCase();
+  
+  const usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === cleanId);
+  if (!usuario) {
+    return { success: false, error: "Cédula/ID no registrado en el sistema." };
+  }
+  
+  if (usuario.contrasena !== contrasena) {
+    return { success: false, error: "Contraseña incorrecta." };
+  }
+  
+  if (usuario.estadoUsuario !== "Aprobado") {
+    return {
+      success: false,
+      error: `REGISTRO PENDIENTE: Tu cuenta (${usuario.nombre}) está en espera de aprobación por el Administrador. Comunícate para agilizar la activación.`,
+      estadoUsuario: usuario.estadoUsuario
+    };
+  }
+  
+  return { success: true, usuario };
+}
+
+// Simular Registro de Usuario
+export function simularRegistroUsuario(idDueno: string, nombre: string, contrasena: string) {
+  const data = getSimulatedData();
+  const cleanId = idDueno.trim();
+  
+  if (data.usuarios.some(u => u.idDueno.toLowerCase() === cleanId.toLowerCase())) {
+    return { success: false, error: "Este ID / Cédula ya está registrado en AutoScore." };
+  }
+  
+  const nuevo: UsuarioPropietario = {
+    idDueno: cleanId,
+    nombre: nombre.trim(),
+    contrasena: contrasena,
+    estadoUsuario: "Pendiente"
+  };
+  
+  data.usuarios.push(nuevo);
+  saveSimulatedData(data);
+  return { success: true, message: "¡Registro guardado! Tu cuenta se encuentra en proceso de aprobación." };
+}
+
+// Buscar por idDueno (Retorna carros solo si el usuario está aprobado)
 export function simularGetPorDueno(idDueno: string) {
   const data = getSimulatedData();
   const searchId = idDueno.trim().toLowerCase();
+  
+  const usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === searchId);
+  if (usuario && usuario.estadoUsuario !== "Aprobado") {
+    return {
+      success: false,
+      error: "REGISTRO PENDIENTE: Tu cuenta está registrada pero aún está pendiente por la aprobación del Administrador.",
+      estadoUsuario: "Pendiente"
+    };
+  }
   
   const filtrados = data.vehiculos.filter(
     v => v.idDueno.trim().toLowerCase() === searchId
@@ -150,7 +239,7 @@ export function simularGetPorDueno(idDueno: string) {
   };
 }
 
-// Buscar por placa y tipo de certificado
+// Buscar por placa y tipo de certificado con Penalidades dinámicas
 export function simularGetCertificado(placa: string, tipoCertificado: string) {
   const data = getSimulatedData();
   const searchPlaca = placa.trim().toUpperCase();
@@ -158,22 +247,115 @@ export function simularGetCertificado(placa: string, tipoCertificado: string) {
   
   const vehiculo = data.vehiculos.find(v => v.placa.trim().toUpperCase() === searchPlaca);
   if (!vehiculo) {
-    return { success: false, error: "Vehículo no registrado en AutoScore" };
+    return { success: false, error: "Vehículo no registrado en la base de datos de AutoScore." };
   }
+  
+  if (vehiculo.estadoCertificado === "Vencido") {
+    return {
+      success: false,
+      error: "CERTIFICADO EXPIRADO: El acceso a la hoja de vida de este vehículo está suspendido por vencimiento del certificado. Comunícate con el Administrador para renovarlo.",
+      estadoCertificado: "Vencido"
+    };
+  }
+  
+  const mantenimientos = data.historial
+    .filter(h => h.placa.trim().toUpperCase() === searchPlaca)
+    .sort((a, b) => b.kilometraje - a.kilometraje);
+  
+  let currentKm = 0;
+  mantenimientos.forEach(h => {
+    if (h.kilometraje > currentKm) currentKm = h.kilometraje;
+  });
+  
+  let penaltyAceite = 0;
+  let penaltyCorrea = 0;
+  let penaltyFrenos = 0;
+  
+  const now = new Date();
+  
+  let lastAceite: any = null;
+  let lastCorrea: any = null;
+  let lastFrenos: any = null;
+  
+  mantenimientos.forEach(h => {
+    const work = h.trabajoRealizado.toLowerCase();
+    const kmWork = h.kilometraje;
+    // Adaptar parsing de fecha
+    const parts = h.fecha.split(" ")[0].split("-");
+    const dateWork = parts.length === 3 
+      ? new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      : new Date(h.fecha);
+      
+    if (!lastAceite && work.includes("aceite")) {
+      lastAceite = { km: kmWork, date: dateWork };
+    }
+    if (!lastCorrea && (work.includes("correa") || work.includes("tiempo"))) {
+      lastCorrea = { km: kmWork, date: dateWork };
+    }
+    if (!lastFrenos && (work.includes("frenos") || work.includes("pastilla") || work.includes("freno"))) {
+      lastFrenos = { km: kmWork, date: dateWork };
+    }
+  });
+  
+  // Penalidad Aceite: > 7,500 km o 180 días
+  if (lastAceite) {
+    const diffKm = currentKm - lastAceite.km;
+    const diffDays = Math.floor((now.getTime() - lastAceite.date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffKm > 7500 || diffDays > 180) penaltyAceite = 20;
+  } else if (currentKm > 7500) {
+    penaltyAceite = 20;
+  }
+  
+  // Penalidad Correa: > 60,000 km o 1095 días (3 años)
+  if (lastCorrea) {
+    const diffKm = currentKm - lastCorrea.km;
+    const diffDays = Math.floor((now.getTime() - lastCorrea.date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffKm > 60000 || diffDays > 1095) penaltyCorrea = 30;
+  } else if (currentKm > 60000) {
+    penaltyCorrea = 30;
+  }
+  
+  // Penalidad Frenos: > 25,000 km o 365 días (1 año)
+  if (lastFrenos) {
+    const diffKm = currentKm - lastFrenos.km;
+    const diffDays = Math.floor((now.getTime() - lastFrenos.date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffKm > 25000 || diffDays > 365) penaltyFrenos = 10;
+  } else if (currentKm > 25000) {
+    penaltyFrenos = 10;
+  }
+  
+  const baseScore = vehiculo.score;
+  const finalScore = Math.max(30, Math.min(100, baseScore - penaltyAceite - penaltyCorrea - penaltyFrenos));
+  
+  const vehiculoCopiado = { ...vehiculo, score: finalScore };
   
   const respuesta: any = {
     success: true,
     tipoCertificado: tipo,
-    vehiculo: { ...vehiculo }
+    vehiculo: vehiculoCopiado,
+    kilometrajeActual: currentKm,
+    penalidades: {
+      aceite: penaltyAceite,
+      correa: penaltyCorrea,
+      frenos: penaltyFrenos
+    },
+    diagnostico: {
+      aceiteVencido: penaltyAceite > 0,
+      correaVencido: penaltyCorrea > 0,
+      frenosVencido: penaltyFrenos > 0
+    }
   };
   
   if (tipo === "completo") {
-    // Buscar historial de mantenimientos para esta placa
-    const mantenimientos = data.historial
-      .filter(h => h.placa.trim().toUpperCase() === searchPlaca)
-      .sort((a, b) => b.kilometraje - a.kilometraje);
-    
-    respuesta.historial = mantenimientos;
+    // Cruzar teléfonos de mecánicos para corroboración Wa.me
+    const timeline = mantenimientos.map(h => {
+      const mec = data.mecanicos.find(m => m.codigoMecanico === h.codigoMecanico);
+      return {
+        ...h,
+        telefonoMecanico: mec ? mec.telefono : undefined
+      };
+    });
+    respuesta.historial = timeline;
   }
   
   return respuesta;
@@ -206,7 +388,7 @@ export function simularPostMantenimiento(payload: {
   if (mecanico.estado === "Suspendido") {
     return {
       success: false,
-      error: `ACCESO DENEGADO: Su cuenta de mecánico (${mecanico.nombre}) está SUSPENDIDA por falta de pago de membresía de AutoScore. Regularice su estado para poder firmar.`
+      error: `ACCESO DENEGADO: Tu cuenta de mecánico (${mecanico.nombre}) está SUSPENDIDA por falta de pago de membresía de AutoScore. Regulariza tu estado.`
     };
   }
   
@@ -237,23 +419,12 @@ export function simularPostMantenimiento(payload: {
     trabajoRealizado: trabajo
   };
   
-  // Guardar en base de datos local
   data.historial.push(nuevoHistorial);
-  
-  // Actualizar el kilometraje y opcionalmente recalcular el score del carro
-  // Vamos a recalcular el score ligeramente de manera dinámica en el simulador por diversión,
-  // subiendo o ajustando el score si tiene mantenimientos recientes cargados.
-  const totalMantenimientos = data.historial.filter(h => h.placa === placa).length;
-  // Un score simulado saludable basado en la cantidad de registros verídicos
-  const scoreBase = data.vehiculos[vehiculoIndex].score;
-  const nuevoScore = Math.min(100, Math.max(40, scoreBase + 2)); // cada servicio verificado sube 2 puntos!
-  data.vehiculos[vehiculoIndex].score = nuevoScore;
-  
   saveSimulatedData(data);
   
   return {
     success: true,
-    message: "¡Mantenimiento verificado registrado exitosamente en la base de datos!",
+    message: "¡Mantenimiento verificado registrado exitosamente!",
     data: {
       idHistorial: newId,
       placa: placa,
@@ -264,7 +435,7 @@ export function simularPostMantenimiento(payload: {
   };
 }
 
-// Función auxiliar para registrar un carro nuevo directamente en el Simulador (para robustez extra)
+// Registrar un carro nuevo
 export function simularRegistrarVehiculo(vehiculo: Vehiculo) {
   const data = getSimulatedData();
   const placaUpper = vehiculo.placa.trim().toUpperCase();
@@ -276,11 +447,72 @@ export function simularRegistrarVehiculo(vehiculo: Vehiculo) {
   const nuevo: Vehiculo = {
     ...vehiculo,
     placa: placaUpper,
-    score: Number(vehiculo.score || 80),
+    score: Number(vehiculo.score || 90),
     estadoCertificado: vehiculo.estadoCertificado || "Activo"
   };
   
   data.vehiculos.push(nuevo);
   saveSimulatedData(data);
   return { success: true, vehiculo: nuevo };
+}
+
+// Actualizaciones de Administrador
+export function simularAdminUpdate(payload: {
+  subAccion: string;
+  targetId: string;
+  nuevoEstado: string;
+  nombre?: string;
+  taller?: string;
+  telefono?: string;
+}) {
+  const data = getSimulatedData();
+  const { subAccion, targetId, nuevoEstado } = payload;
+  
+  if (subAccion === "actualizarUsuario") {
+    const idx = data.usuarios.findIndex(u => u.idDueno.toLowerCase() === targetId.toLowerCase());
+    if (idx !== -1) {
+      data.usuarios[idx].estadoUsuario = nuevoEstado as any;
+      saveSimulatedData(data);
+      return { success: true, message: `Usuario actualizado correctamente a: ${nuevoEstado}` };
+    }
+    return { success: false, error: "Usuario no encontrado." };
+  }
+  
+  if (subAccion === "actualizarMecanico") {
+    const idx = data.mecanicos.findIndex(m => m.codigoMecanico.toUpperCase() === targetId.toUpperCase());
+    if (idx !== -1) {
+      data.mecanicos[idx].estado = nuevoEstado as any;
+      saveSimulatedData(data);
+      return { success: true, message: `Mecánico actualizado correctamente a: ${nuevoEstado}` };
+    }
+    return { success: false, error: "Mecánico no encontrado." };
+  }
+  
+  if (subAccion === "actualizarVehiculo") {
+    const idx = data.vehiculos.findIndex(v => v.placa.toUpperCase() === targetId.toUpperCase());
+    if (idx !== -1) {
+      data.vehiculos[idx].estadoCertificado = nuevoEstado as any;
+      saveSimulatedData(data);
+      return { success: true, message: `Certificado de vehículo actualizado a: ${nuevoEstado}` };
+    }
+    return { success: false, error: "Vehículo no encontrado." };
+  }
+  
+  if (subAccion === "agregarMecanico") {
+    if (data.mecanicos.some(m => m.codigoMecanico.toUpperCase() === targetId.toUpperCase())) {
+      return { success: false, error: "Este código de mecánico ya existe." };
+    }
+    const nuevoMec: Mecanico = {
+      codigoMecanico: targetId.toUpperCase(),
+      nombre: payload.nombre || "Mecánico Registrado",
+      taller: payload.taller || "Taller Oficial",
+      estado: "Activo",
+      telefono: payload.telefono || ""
+    };
+    data.mecanicos.push(nuevoMec);
+    saveSimulatedData(data);
+    return { success: true, message: "Mecánico registrado exitosamente en AutoScore." };
+  }
+  
+  return { success: false, error: "Acción de administrador no reconocida." };
 }

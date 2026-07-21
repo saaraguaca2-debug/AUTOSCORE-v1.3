@@ -68,6 +68,16 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     }
   }, [showScanner, scanMethod]);
 
+  // Pre-llenar la placa automáticamente si se pasa por parámetro URL (QR de Técnico)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPlaca = params.get("placa");
+    if (urlPlaca) {
+      setPlaca(urlPlaca.toUpperCase());
+      setInspPlaca(urlPlaca.toUpperCase());
+    }
+  }, []);
+
   // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA)
   const handleMecanicoLogin = async (e: React.FormEvent) => {
     e.preventDefault();
