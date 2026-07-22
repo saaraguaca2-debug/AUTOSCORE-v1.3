@@ -1,9 +1,9 @@
 import React from "react";
-import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle } from "lucide-react";
+import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle, UserPlus } from "lucide-react";
 import { VistaActual } from "../types";
 
 interface InicioViewProps {
-  onNavigate: (vista: VistaActual) => void;
+  onNavigate: (vista: VistaActual, modoUsuario?: "login" | "registro") => void;
   useSimulado: boolean;
 }
 
@@ -35,9 +35,9 @@ export default function InicioView({ onNavigate, useSimulado }: InicioViewProps)
       </div>
 
       {/* Botones de acción principales (Estilo VIP) */}
-      <div className="w-full flex flex-col gap-4 mb-8">
+      <div className="w-full flex flex-col gap-3.5 mb-8">
         <button
-          onClick={() => onNavigate("usuario")}
+          onClick={() => onNavigate("usuario", "login")}
           className="w-full group bg-gradient-to-br from-amber-400 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-slate-950 font-extrabold py-4 px-6 rounded-2xl shadow-xl hover:shadow-amber-500/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-between"
           id="btn-portal-usuario"
         >
@@ -51,6 +51,24 @@ export default function InicioView({ onNavigate, useSimulado }: InicioViewProps)
             </div>
           </div>
           <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+        </button>
+
+        {/* Tarjeta / Enlace de Registro Prominente */}
+        <button
+          onClick={() => onNavigate("usuario", "registro")}
+          className="w-full group bg-slate-900/80 hover:bg-slate-800/90 text-amber-400 border border-amber-500/30 hover:border-amber-500/50 font-extrabold py-3.5 px-5 rounded-2xl shadow-lg active:scale-[0.98] transition-all duration-200 flex items-center justify-between backdrop-blur-md"
+          id="btn-registrarse-inicio"
+        >
+          <div className="flex items-center gap-3 text-left">
+            <div className="p-2 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/20">
+              <UserPlus className="w-5 h-5 stroke-[2]" />
+            </div>
+            <div>
+              <span className="block text-sm font-extrabold leading-tight text-white">¿No tienes cuenta? Registrarse gratis</span>
+              <span className="block text-[10px] font-normal text-amber-300/80">Crear perfil de propietario de vehículo</span>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform" />
         </button>
 
         <button

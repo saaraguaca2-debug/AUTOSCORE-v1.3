@@ -60,6 +60,7 @@ export default function App() {
 
   // Enrutamiento mediante Estado de React (Instantáneo y óptimo para móviles)
   const [currentView, setCurrentView] = useState<VistaActual>("home");
+  const [usuarioInitialMode, setUsuarioInitialMode] = useState<"login" | "registro">("login");
 
   // Detectar parámetros de la URL para enrutamiento automático en el arranque (QR / Links Públicos)
   useEffect(() => {
@@ -88,7 +89,12 @@ export default function App() {
   }, []);
 
   // Función para transicionar vistas suavemente
-  const navegarA = (vista: VistaActual) => {
+  const navegarA = (vista: VistaActual, modoUsuario?: "login" | "registro") => {
+    if (modoUsuario) {
+      setUsuarioInitialMode(modoUsuario);
+    } else if (vista === "usuario" && !modoUsuario) {
+      setUsuarioInitialMode("login");
+    }
     setCurrentView(vista);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -138,7 +144,7 @@ export default function App() {
                 case "home":
                   return <InicioView onNavigate={navegarA} useSimulado={useSimulado} />;
                 case "usuario":
-                  return <UsuarioView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
+                  return <UsuarioView useSimulado={useSimulado} appScriptUrl={appScriptUrl} initialMode={usuarioInitialMode} />;
                 case "mecanico":
                   return <MecanicoView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
                 case "admin":

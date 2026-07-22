@@ -138,6 +138,8 @@ const MOCK_HISTORIAL: HistorialRow[] = [
     fecha: "2026-05-10 14:30:22",
     kilometraje: 45000,
     codigoMecanico: "M101",
+    nombreMecanico: "Carlos Mendoza",
+    telefonoMecanico: "584121111111",
     taller: "Mendoza Motors (Altamira)",
     trabajoRealizado: "Cambio de correa de tiempo, bujías denso de iridio, limpieza profunda de inyectores por ultrasonido y reemplazo de filtro de gasolina."
   },
@@ -147,6 +149,8 @@ const MOCK_HISTORIAL: HistorialRow[] = [
     fecha: "2026-06-15 09:15:00",
     kilometraje: 42000,
     codigoMecanico: "M303",
+    nombreMecanico: "Valentina Gómez",
+    telefonoMecanico: "584243333333",
     taller: "Caracas Tuning Lab (Chacao)",
     trabajoRealizado: "Servicio de lubricación completo. Cambio de aceite semisintético 15W40, filtro de aire de motor, filtro de cabina y revisión general de frenos delanteros."
   },
@@ -156,6 +160,8 @@ const MOCK_HISTORIAL: HistorialRow[] = [
     fecha: "2026-04-02 11:20:10",
     kilometraje: 112000,
     codigoMecanico: "M101",
+    nombreMecanico: "Carlos Mendoza",
+    telefonoMecanico: "584121111111",
     taller: "Mendoza Motors (Altamira)",
     trabajoRealizado: "Sustitución de amortiguadores delanteros marca Gabriel, reparación menor del sistema de dirección (terminales) con alineación computarizada y balanceo."
   },
@@ -165,6 +171,8 @@ const MOCK_HISTORIAL: HistorialRow[] = [
     fecha: "2025-11-20 16:45:00",
     kilometraje: 185000,
     codigoMecanico: "M202",
+    nombreMecanico: "José Rodríguez",
+    telefonoMecanico: "584142222222",
     taller: "Rodríguez Performance (Boleíta)",
     trabajoRealizado: "Reparación de fuga de refrigerante en manguera superior del radiador, reemplazo de tapa de envase de expansión y purga de sistema con refrigerante premium."
   }
@@ -234,12 +242,45 @@ export function inicializarBaseDatosSimulada() {
 // Obtener datos actuales del localStorage
 export function getSimulatedData() {
   inicializarBaseDatosSimulada();
-  return {
-    usuarios: JSON.parse(localStorage.getItem("autoscore_usuarios") || "[]") as UsuarioPropietario[],
-    mecanicos: JSON.parse(localStorage.getItem("autoscore_mecanicos") || "[]") as Mecanico[],
-    vehiculos: JSON.parse(localStorage.getItem("autoscore_vehiculos") || "[]") as Vehiculo[],
-    historial: JSON.parse(localStorage.getItem("autoscore_historial") || "[]") as HistorialRow[]
-  };
+  const usuarios = JSON.parse(localStorage.getItem("autoscore_usuarios") || "[]") as UsuarioPropietario[];
+  const mecanicos = JSON.parse(localStorage.getItem("autoscore_mecanicos") || "[]") as Mecanico[];
+  const vehiculos = JSON.parse(localStorage.getItem("autoscore_vehiculos") || "[]") as Vehiculo[];
+  const historial = JSON.parse(localStorage.getItem("autoscore_historial") || "[]") as HistorialRow[];
+
+  let updated = false;
+  historial.forEach((row) => {
+    const cleanCode = (row.codigoMecanico || "").trim().toLowerCase();
+    const mecMatch = mecanicos.find(m => (m.codigoMecanico || "").trim().toLowerCase() === cleanCode);
+    if (mecMatch) {
+      if (!row.nombreMecanico || row.nombreMecanico === "Técnico Certificado") {
+        row.nombreMecanico = mecMatch.nombre;
+        updated = true;
+      }
+      if (!row.telefonoMecanico && mecMatch.telefono) {
+        row.telefonoMecanico = mecMatch.telefono;
+        updated = true;
+      }
+      if ((!row.taller || row.taller === "Taller Independiente" || row.taller === "Taller Oficial") && mecMatch.taller) {
+        row.taller = mecMatch.taller;
+        updated = true;
+      }
+    } else {
+      if (!row.nombreMecanico) {
+        row.nombreMecanico = row.taller ? `Técnico (${row.taller})` : "Mecánico Certificado";
+        updated = true;
+      }
+      if (!row.taller || row.taller === "Taller Independiente") {
+        row.taller = "Taller Autorizado AutoScore";
+        updated = true;
+      }
+    }
+  });
+
+  if (updated && typeof window !== "undefined") {
+    localStorage.setItem("autoscore_historial", JSON.stringify(historial));
+  }
+
+  return { usuarios, mecanicos, vehiculos, historial };
 }
 
 // Guardar datos actualizados
@@ -266,68 +307,64 @@ export function simularLogin(idDueno: string, contrasena: string) {
   
   let usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === cleanId);
   if (!usuario) {
-    // Si la cédula no existía, auto-crear y activar para acceso inmediato
-    usuario = {
-      idDueno: idDueno.trim(),
-      nombre: "Propietario " + idDueno.trim(),
-      contrasena: contrasena,
-      estadoUsuario: "Aprobado"
-    };
-    data.usuarios.push(usuario);
-    saveSimulatedData(data);
-    return { success: true, usuario };
+    return { success: false, error: "Cédula no encontrada. Por favor regístrese en la plataforma." };
   }
   
   if (usuario.contrasena !== contrasena) {
     return { success: false, error: "Contraseña incorrecta." };
   }
   
-  // Garantizar estado Aprobado para evitar bloqueos
-  if (usuario.estadoUsuario !== "Aprobado") {
-    usuario.estadoUsuario = "Aprobado";
-    saveSimulatedData(data);
+  if (usuario.estadoUsuario === "Pendiente") {
+    return { 
+      success: false, 
+      error: "ACCESO RESTRINGIDO: Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador. Solicita la activación al Admin." 
+    };
+  }
+
+  if (usuario.estadoUsuario === "Rechazado") {
+    return { 
+      success: false, 
+      error: "ACCESO DENEGADO: Tu cuenta de usuario se encuentra inhabilitada." 
+    };
   }
   
   return { success: true, usuario };
 }
 
-// Simular Registro de Usuario
+// Simular Registro de Usuario (Crea en estado Pendiente para requerir Aprobación de Admin)
 export function simularRegistroUsuario(idDueno: string, nombre: string, contrasena: string) {
   const data = getSimulatedData();
   const cleanId = idDueno.trim();
   
   const existingIdx = data.usuarios.findIndex(u => u.idDueno.toLowerCase() === cleanId.toLowerCase());
   if (existingIdx !== -1) {
-    // Si ya existe, actualizar y activar
-    data.usuarios[existingIdx].nombre = nombre.trim();
-    data.usuarios[existingIdx].contrasena = contrasena;
-    data.usuarios[existingIdx].estadoUsuario = "Aprobado";
-    saveSimulatedData(data);
-    return { success: true, message: "¡Cuenta de propietario actualizada y activada exitosamente!" };
+    const usr = data.usuarios[existingIdx];
+    if (usr.estadoUsuario === "Pendiente") {
+      return { success: false, error: "Esta cédula ya tiene una cuenta PENDIENTE DE APROBACIÓN por el Administrador." };
+    }
+    return { success: false, error: "Esta Cédula ya se encuentra registrada. Inicia sesión con tus credenciales." };
   }
   
   const nuevo: UsuarioPropietario = {
     idDueno: cleanId,
     nombre: nombre.trim(),
     contrasena: contrasena,
-    estadoUsuario: "Aprobado"
+    estadoUsuario: "Pendiente" // Se requiere aprobación manual desde la vista Admin
   };
   
   data.usuarios.push(nuevo);
   saveSimulatedData(data);
-  return { success: true, message: "¡Registro guardado y cuenta activada exitosamente!" };
+  return { 
+    success: true, 
+    pendingApproval: true,
+    message: `¡Registro recibido con éxito! Tu cuenta (Cédula: ${cleanId}) fue creada en estado PENDIENTE DE APROBACIÓN. El Administrador debe aprobar tu usuario desde el Panel Admin antes de poder ingresar.` 
+  };
 }
 
 // Buscar por idDueno
 export function simularGetPorDueno(idDueno: string) {
   const data = getSimulatedData();
   const searchId = idDueno.trim().toLowerCase();
-  
-  const usuario = data.usuarios.find(u => u.idDueno.toLowerCase() === searchId);
-  if (usuario && usuario.estadoUsuario !== "Aprobado") {
-    usuario.estadoUsuario = "Aprobado";
-    saveSimulatedData(data);
-  }
   
   const filtrados = data.vehiculos.filter(
     v => v.idDueno.trim().toLowerCase() === searchId
@@ -476,6 +513,8 @@ export function simularGetCertificado(placa: string, tipoCertificado: string) {
 // Registrar nuevo mantenimiento (POST)
 export function simularPostMantenimiento(payload: {
   codigoMecanico: string;
+  nombreMecanico?: string;
+  taller?: string;
   placa: string;
   kilometraje: number;
   trabajo: string;
@@ -485,6 +524,8 @@ export function simularPostMantenimiento(payload: {
   const placa = payload.placa.trim().toUpperCase();
   const km = Number(payload.kilometraje || 0);
   const trabajo = payload.trabajo.trim();
+  const paramNombre = payload.nombreMecanico ? payload.nombreMecanico.trim() : "";
+  const paramTaller = payload.taller ? payload.taller.trim() : "";
   
   if (!codMec || !placa || !km || !trabajo) {
     return { success: false, error: "Faltan datos requeridos para el registro" };
@@ -493,16 +534,19 @@ export function simularPostMantenimiento(payload: {
   // 1. Validar mecánico (búsqueda insensible a mayúsculas)
   let mecanico = data.mecanicos.find(m => m.codigoMecanico.toUpperCase() === codMec.toUpperCase());
   if (!mecanico) {
-    // Si no está previamente registrado, darlo de alta automáticamente como taller/mecanico activo
+    // Si no está previamente registrado, darlo de alta automáticamente
     mecanico = {
       codigoMecanico: codMec.toUpperCase(),
-      nombre: `Técnico Homologado #${codMec.toUpperCase()}`,
-      taller: `Taller Afiliado #${codMec.toUpperCase()}`,
+      nombre: paramNombre || `Técnico Homologado #${codMec.toUpperCase()}`,
+      taller: paramTaller || `Taller Afiliado #${codMec.toUpperCase()}`,
       estado: "Activo",
       telefono: "584120000000"
     };
     data.mecanicos.push(mecanico);
     saveSimulatedData(data);
+  } else {
+    if (paramNombre && paramNombre !== "") mecanico.nombre = paramNombre;
+    if (paramTaller && paramTaller !== "") mecanico.taller = paramTaller;
   }
   
   // Bloquear solo por membresía suspendida
@@ -545,7 +589,9 @@ export function simularPostMantenimiento(payload: {
     fecha: fechaString,
     kilometraje: km,
     codigoMecanico: codMec,
-    taller: mecanico.taller || "Taller Independiente",
+    taller: mecanico.taller || "Taller Autorizado AutoScore",
+    nombreMecanico: mecanico.nombre,
+    telefonoMecanico: mecanico.telefono,
     trabajoRealizado: trabajo
   };
   

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   Lock, Shield, Users, Car, PenTool, BarChart3, CheckCircle2, XCircle, AlertCircle, 
   RefreshCw, UserCheck, Key, Plus, Phone, Hammer, HelpCircle, ArrowRight,
-  Sliders, Settings, Gauge, Save, RotateCcw, Sparkles
+  Sliders, Settings, Gauge, Save, RotateCcw, Sparkles, Wrench, User
 } from "lucide-react";
 import { 
   getSimulatedData, simularAdminUpdate, 
@@ -594,12 +594,19 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
               {mecanicos.map((mec, idx) => (
                 <div key={idx} className="bg-slate-900/40 border border-white/5 p-3 rounded-2xl space-y-2">
                   <div className="flex justify-between items-start">
-                    <div>
-                      <span className="text-xs font-bold text-white block">{mec.nombre}</span>
-                      <span className="text-[10px] text-amber-500 font-mono block mt-0.5">Código: {mec.codigoMecanico}</span>
-                      <span className="text-[10px] text-slate-400 block mt-0.5">Taller: {mec.taller}</span>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                        <span className="text-xs font-extrabold text-white">{mec.taller || "Taller Autorizado"}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span className="text-[11px] text-slate-400 font-medium">Mecánico:</span>
+                        <span className="text-[11px] font-bold text-slate-200">{mec.nombre}</span>
+                      </div>
+                      <span className="text-[10px] text-amber-500 font-mono block">Código: {mec.codigoMecanico}</span>
                       {mec.telefono && (
-                        <span className="text-[10px] text-slate-500 font-mono block mt-0.5 flex items-center gap-1">
+                        <span className="text-[10px] text-slate-400 font-mono block flex items-center gap-1">
                           <Phone className="w-3 h-3" />
                           <span>+{mec.telefono}</span>
                         </span>

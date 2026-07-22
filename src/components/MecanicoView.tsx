@@ -3,7 +3,7 @@ import jsQR from "jsqr";
 import { 
   PenTool, Shield, QrCode, AlertCircle, RefreshCw, Key, Camera, Gauge, CheckCircle2,
   Lock, ArrowRight, CornerDownLeft, Sparkles, AlertTriangle, MonitorPlay, Check, PlusCircle,
-  ClipboardCheck
+  ClipboardCheck, Wrench, User
 } from "lucide-react";
 import { Mecanico, Vehiculo } from "../types";
 import { getSimulatedData, simularPostMantenimiento, simularRegistrarVehiculo, saveSimulatedData } from "../mockData";
@@ -337,6 +337,8 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
 
     const payload = {
       codigoMecanico: loggedMecanico.codigoMecanico,
+      nombreMecanico: loggedMecanico.nombre,
+      taller: loggedMecanico.taller,
       placa: cleanPlaca,
       kilometraje: kmNum,
       trabajo: cleanTrabajo
@@ -497,25 +499,34 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
       {loggedMecanico && (
         <div className="space-y-6">
           
-          {/* Cabecera Técnico Activo */}
-          <div className="flex items-center justify-between bg-white/5 border border-white/10 p-4 rounded-2xl backdrop-blur-sm">
+          {/* Cabecera Técnico y Taller Activo */}
+          <div className="flex items-center justify-between bg-slate-900/90 border border-amber-500/30 p-4 rounded-2xl backdrop-blur-md shadow-lg">
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 mb-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                 <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wider">
-                  FIRMANDO COMO TÉCNICO
+                  SESIÓN ACTIVA DE TALLER & TÉCNICO
                 </span>
               </div>
-              <h3 className="text-sm font-semibold text-white truncate mt-1">
-                {loggedMecanico.nombre}
-              </h3>
-              <p className="text-[11px] text-slate-400 truncate mt-0.5">
-                Taller: {loggedMecanico.taller}
-              </p>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Wrench className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="text-xs text-amber-400 font-bold">Taller:</span>
+                  <span className="text-sm font-extrabold text-white truncate">{loggedMecanico.taller}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="text-xs text-slate-400 font-medium">Mecánico:</span>
+                  <span className="text-xs font-bold text-white truncate">{loggedMecanico.nombre}</span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono pt-0.5">
+                  Código de Acreditación: <span className="text-amber-500 font-bold">#{loggedMecanico.codigoMecanico}</span>
+                </p>
+              </div>
             </div>
             <button
               onClick={handleLogoutMecanico}
-              className="text-xs bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-lg px-2.5 py-1.5 ml-3 font-medium shrink-0 transition-colors"
+              className="text-xs bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 rounded-xl px-3 py-2 ml-3 font-medium shrink-0 transition-all active:scale-95 shadow"
               id="btn-mecanico-logout"
             >
               Salir
@@ -782,6 +793,8 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
 
                       const resMaint = simularPostMantenimiento({
                         codigoMecanico: loggedMecanico.codigoMecanico,
+                        nombreMecanico: loggedMecanico.nombre,
+                        taller: loggedMecanico.taller,
                         placa: cleanPlaca,
                         kilometraje: kmNum,
                         trabajo: trabajoInspeccion
@@ -852,6 +865,8 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                       headers: { "Content-Type": "text/plain;charset=utf-8" },
                       body: JSON.stringify({
                         codigoMecanico: loggedMecanico.codigoMecanico,
+                        nombreMecanico: loggedMecanico.nombre,
+                        taller: loggedMecanico.taller,
                         placa: cleanPlaca,
                         kilometraje: kmNum,
                         trabajo: trabajoInspeccion

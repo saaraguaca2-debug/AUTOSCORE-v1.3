@@ -3,7 +3,7 @@ import {
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
   Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
   CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
-  PenTool, Share2
+  PenTool, Share2, FileText
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { 
@@ -23,14 +23,21 @@ function safeDecodeURIComponent(str: string): string {
 interface UsuarioViewProps {
   useSimulado: boolean;
   appScriptUrl: string;
+  initialMode?: "login" | "registro";
 }
 
-export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewProps) {
+export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "login" }: UsuarioViewProps) {
   // Variables ocultas para Vercel / Entorno
   const adminPhoneEnv = (import.meta as any).env?.VITE_ADMIN_PHONE || (import.meta as any).env?.NEXT_PUBLIC_ADMIN_PHONE || "584121111111";
 
   // Estados de control de vista
-  const [viewMode, setViewMode] = useState<"login" | "registro" | "garage" | "certificado">("login");
+  const [viewMode, setViewMode] = useState<"login" | "registro" | "garage" | "certificado">(initialMode);
+
+  useEffect(() => {
+    if (initialMode && (initialMode === "login" || initialMode === "registro")) {
+      setViewMode(initialMode);
+    }
+  }, [initialMode]);
   const [loggedUser, setLoggedUser] = useState<{ idDueno: string; nombre: string } | null>(null);
   
   // Login / Registro Inputs
@@ -54,6 +61,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   const [showFaceToFaceQR, setShowFaceToFaceQR] = useState(false);
   const [showMecanicoQR, setShowMecanicoQR] = useState(false);
   const [activeTecnicoModal, setActiveTecnicoModal] = useState<any | null>(null);
+  
+  // Inspector / Debugger de Google Sheets
+  const [rawSheetsPayload, setRawSheetsPayload] = useState<any>(null);
+  const [showSheetsInspector, setShowSheetsInspector] = useState(false);
 
   const [baseUrlOverride, setBaseUrlOverride] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -108,9 +119,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
 
       if (isSimulado) {
         const res = simularGetCertificado(placa, tipo);
+        setRawSheetsPayload({ fuente: "Simulador Local", ...res });
         if (res.success) {
           setSelectedCar(res.vehiculo);
-          setHistorial(res.historial || []);
+          setHistorial(normalizeHistorial(res.historial || []));
           setActiveCertType(tipo);
           setViewMode("certificado");
         } else {
@@ -124,6 +136,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
         if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
         const result = await response.json();
+        setRawSheetsPayload({ fuente: "Google Sheets Live", url: apiUr, ...result });
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
           setHistorial(normalizeHistorial(result.historial || []));
@@ -174,10 +187,21 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
         const json = await res.json();
         if (json && json.success) {
-          // Obtener vehículos de este dueño de forma ultra segura
           const userObj = json.usuario || json.user || {};
           const cleanId = userObj.idDueno || userObj.IdDueno || idDuenoInput.trim();
           const cleanNombre = userObj.nombre || userObj.Nombre || idDuenoInput.trim();
+          const estado = userObj.estadoUsuario || userObj.EstadoUsuario || "Aprobado";
+
+          if (estado === "Pendiente") {
+            setError("ACCESO RESTRINGIDO: Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador.");
+            setLoading(false);
+            return;
+          }
+          if (estado === "Rechazado") {
+            setError("ACCESO DENEGADO: Tu cuenta ha sido inhabilitada por el Administrador.");
+            setLoading(false);
+            return;
+          }
 
           const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(cleanId)}`;
           const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
@@ -199,7 +223,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     }
   };
 
-  // Registro de Propietarios (Nuevo Cliente con activación inmediata)
+  // Registro de Propietarios (Nuevo Cliente - requiere aprobación del Admin)
   const handleRegistro = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!idDuenoInput.trim() || !nombreInput.trim() || !contrasenaInput.trim()) {
@@ -214,48 +238,17 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     const cleanNombre = nombreInput.trim();
 
     try {
-      if (useSimulado) {
+      if (useSimulado || !appScriptUrl) {
         const res = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
         if (res.success) {
-          const userLogged = {
-            idDueno: cleanId,
-            nombre: cleanNombre,
-            contrasena: contrasenaInput,
-            estadoUsuario: "Aprobado" as const
-          };
-          setLoggedUser(userLogged);
-          setViewMode("garage");
-          const resVeh = simularGetPorDueno(cleanId);
-          setVehiculos(resVeh.data || []);
-          setSuccessMsg("¡Registro y activación exitosos! Bienvenido a tu Garaje Virtual.");
+          setSuccessMsg(res.message || "¡Registro recibido! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador.");
+          setViewMode("login");
           setNombreInput("");
           setContrasenaInput("");
         } else {
-          setError((res as any).error || "Error en el auto-registro.");
+          setError((res as any).error || "Error en el registro.");
         }
       } else {
-        if (!appScriptUrl) {
-          // Fallback local instantáneo si no hay URL de Sheets
-          const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-          if (resLocal.success) {
-            const userLogged = {
-              idDueno: cleanId,
-              nombre: cleanNombre,
-              contrasena: contrasenaInput,
-              estadoUsuario: "Aprobado" as const
-            };
-            setLoggedUser(userLogged);
-            setViewMode("garage");
-            const resVeh = simularGetPorDueno(cleanId);
-            setVehiculos(resVeh.data || []);
-            setSuccessMsg("¡Registro y activación exitosos!");
-          } else {
-            setError((resLocal as any).error || "Error al procesar el registro.");
-          }
-          setLoading(false);
-          return;
-        }
-
         const payload = {
           accion: "registroUsuario",
           idDueno: cleanId,
@@ -274,39 +267,31 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
           if (!res.ok) throw new Error("Fallo al enviar datos.");
           const json = await res.json();
           if (json && json.success) {
-            const userLogged = {
-              idDueno: cleanId,
-              nombre: cleanNombre,
-              contrasena: contrasenaInput,
-              estadoUsuario: "Aprobado" as const
-            };
-            setLoggedUser(userLogged);
-            setViewMode("garage");
-            setSuccessMsg("¡Registro y activación exitosos en Google Sheets!");
+            setSuccessMsg("¡Registro guardado con éxito! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador antes de ingresar.");
+            setViewMode("login");
+            setNombreInput("");
+            setContrasenaInput("");
           } else {
-            // Si el servidor rechaza, activar en local de respaldo
-            simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-            const userLogged = {
-              idDueno: cleanId,
-              nombre: cleanNombre,
-              contrasena: contrasenaInput,
-              estadoUsuario: "Aprobado" as const
-            };
-            setLoggedUser(userLogged);
-            setViewMode("garage");
+            const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
+            if (resLocal.success) {
+              setSuccessMsg(resLocal.message);
+              setViewMode("login");
+              setNombreInput("");
+              setContrasenaInput("");
+            } else {
+              setError((resLocal as any).error || "Error al procesar el registro.");
+            }
           }
         } catch (fetchErr) {
-          // Ante fallo de red o CORS, usar registro local para no bloquear al usuario
-          simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-          const userLogged = {
-            idDueno: cleanId,
-            nombre: cleanNombre,
-            contrasena: contrasenaInput,
-            estadoUsuario: "Aprobado" as const
-          };
-          setLoggedUser(userLogged);
-          setViewMode("garage");
-          setSuccessMsg("¡Registro guardado en sistema!");
+          const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
+          if (resLocal.success) {
+            setSuccessMsg(resLocal.message);
+            setViewMode("login");
+            setNombreInput("");
+            setContrasenaInput("");
+          } else {
+            setError((resLocal as any).error || "Error al registrar.");
+          }
         }
       }
     } catch (err: any) {
@@ -326,6 +311,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
     try {
       if (useSimulado) {
         const res = simularGetCertificado(veh.placa, tipo);
+        setRawSheetsPayload({ fuente: "Simulador Local", ...res });
         if (res.success) {
           setSelectedCar(res.vehiculo);
           setHistorial(normalizeHistorial(res.historial || []));
@@ -339,6 +325,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
         if (!response.ok) throw new Error("Error en red.");
         const result = await response.json();
+        setRawSheetsPayload({ fuente: "Google Sheets Live", url: appScriptUrl, ...result });
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
           setHistorial(normalizeHistorial(result.historial || []));
@@ -558,101 +545,136 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
   // Normalizar de forma ultra robusta los registros de historial para que sus campos siempre coincidan con las expectativas de la UI
   const normalizeHistorial = (rawHistorial: any[]): HistorialRow[] => {
     if (!Array.isArray(rawHistorial)) return [];
+
+    const getRowVal = (rowObj: any, candidateKeys: string[]): string => {
+      if (!rowObj || typeof rowObj !== "object") return "";
+      
+      // 1. Coincidencia exacta de propiedad
+      for (const key of candidateKeys) {
+        if (rowObj[key] !== undefined && rowObj[key] !== null && String(rowObj[key]).trim() !== "") {
+          return String(rowObj[key]).trim();
+        }
+      }
+
+      // 2. Coincidencia insensible a mayúsculas, espacios, guiones y tildes
+      const cleanCandidates = candidateKeys.map(k =>
+        k.toLowerCase()
+         .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+         .replace(/[^a-z0-9]/g, "")
+      );
+
+      for (const actualKey of Object.keys(rowObj)) {
+        const val = rowObj[actualKey];
+        if (val !== undefined && val !== null && String(val).trim() !== "") {
+          const cleanActualKey = actualKey.toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, "");
+          if (cleanCandidates.includes(cleanActualKey)) {
+            return String(val).trim();
+          }
+        }
+      }
+
+      return "";
+    };
+
     return rawHistorial.map((row) => {
       const normalized: any = { ...row };
-      
-      // 1. Encontrar el código de mecánico
+
+      // 1. Código de mecánico
       const codeKeys = [
         "codigoMecanico", "codigomecanico", "codigo_mecanico", "codigoMec", 
         "codigo_mec", "codigo", "cod", "mecanico", "mecanicoCodigo", 
-        "idMecanico", "id_mecanico", "idmecanico", "firma", "sello"
+        "idMecanico", "id_mecanico", "idmecanico", "firma", "sello", "codmecanico",
+        "codigodemecanico", "codigomecanicocertificado"
       ];
-      for (const key of codeKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.codigoMecanico = String(row[key]).trim();
-          break;
-        }
-      }
-      
-      // 2. Encontrar el taller
+      const foundCode = getRowVal(row, codeKeys);
+      if (foundCode) normalized.codigoMecanico = foundCode;
+
+      // 2. Taller / Establecimiento
       const tallerKeys = [
-        "taller", "nombretaller", "nombre_taller", "taller_mecanico", "establecimiento", "empresa"
+        "taller", "nombretaller", "nombre_taller", "taller_mecanico", "establecimiento",
+        "empresa", "nombre_del_taller", "tallermecanico", "tallerautorizado", "nombredeltaller",
+        "talleroficial", "centroservicio", "centro_servicio", "tallerempresa"
       ];
-      for (const key of tallerKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.taller = String(row[key]).trim();
-          break;
-        }
-      }
+      const foundTaller = getRowVal(row, tallerKeys);
+      if (foundTaller) normalized.taller = foundTaller;
 
-      // 3. Encontrar la fecha
+      // 3. Fecha
       const fechaKeys = [
-        "fecha", "fecha_servicio", "fechaServicio", "dia", "date", "createdat"
+        "fecha", "fecha_servicio", "fechaServicio", "dia", "date", "createdat",
+        "fechademantenimiento", "fechadeservicio"
       ];
-      for (const key of fechaKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.fecha = String(row[key]).trim();
-          break;
-        }
-      }
+      const foundFecha = getRowVal(row, fechaKeys);
+      if (foundFecha) normalized.fecha = foundFecha;
 
-      // 4. Encontrar el kilometraje
+      // 4. Kilometraje
       const kmKeys = [
-        "kilometraje", "km", "kilómetros", "kilometros", "kms", "odometro", "odómetro"
+        "kilometraje", "km", "kilómetros", "kilometros", "kms", "odometro", "odómetro", "kilometrajerecord"
       ];
-      for (const key of kmKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.kilometraje = Number(String(row[key]).replace(/[^0-9]/g, "")) || 0;
-          break;
-        }
+      const foundKm = getRowVal(row, kmKeys);
+      if (foundKm) {
+        normalized.kilometraje = Number(foundKm.replace(/[^0-9]/g, "")) || 0;
       }
 
-      // 5. Encontrar el trabajo realizado
+      // 5. Trabajo realizado
       const trabajoKeys = [
-        "trabajoRealizado", "trabajo_realizado", "trabajorealizado", "trabajo", "descripcion", "servicio", "mantenimiento"
+        "trabajoRealizado", "trabajo_realizado", "trabajorealizado", "trabajo",
+        "descripcion", "servicio", "mantenimiento", "reparacion", "detalle"
       ];
-      for (const key of trabajoKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.trabajoRealizado = String(row[key]).trim();
-          break;
-        }
-      }
+      const foundTrabajo = getRowVal(row, trabajoKeys);
+      if (foundTrabajo) normalized.trabajoRealizado = foundTrabajo;
 
-      // 6. Encontrar el teléfono del mecánico si viniera en el historial
+      // 6. Nombre del mecánico
+      const nameKeys = [
+        "nombreMecanico", "nombre_mecanico", "mecanico", "nombreMec", "tecnico", "técnico",
+        "nombreTecnico", "nombre_tecnico", "mecanico_responsable", "mecanicoresponsable",
+        "nombre_del_mecanico", "nombredelmecanico", "tecnico_certificador", "responsable"
+      ];
+      const foundName = getRowVal(row, nameKeys);
+      if (foundName) normalized.nombreMecanico = foundName;
+
+      // 7. Teléfono del mecánico
       const telKeys = [
         "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec",
-        "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone",
-        "wassap", "Wassap", "WASSAP", "whatsapp", "WhatsApp", "WHATSAPP", "wasa", "Wasa"
+        "teléfono", "tel", "phone", "wassap", "whatsapp", "wasa", "celular", "contacto"
       ];
-      for (const key of telKeys) {
-        if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
-          normalized.telefonoMecanico = String(row[key]).trim();
-          break;
-        }
-      }
+      const foundTel = getRowVal(row, telKeys);
+      if (foundTel) normalized.telefonoMecanico = foundTel;
 
-      // 7. Si no viene directo, buscar por CodigoMecanico en el listado de mecánicos locales para hidratarlo de forma ultra segura
-      if (!normalized.telefonoMecanico && normalized.codigoMecanico) {
+      // 8. Hidratar con datos del listado local de mecánicos según el CodigoMecanico
+      if (normalized.codigoMecanico) {
         try {
           const localMecs = getSimulatedData().mecanicos;
           const cleanCode = String(normalized.codigoMecanico).trim().toLowerCase();
           const match = localMecs.find(
             m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
           );
-          if (match && match.telefono) {
-            normalized.telefonoMecanico = String(match.telefono).trim();
+          if (match) {
+            if (!normalized.telefonoMecanico && match.telefono) {
+              normalized.telefonoMecanico = String(match.telefono).trim();
+            }
+            if (!normalized.nombreMecanico && match.nombre) {
+              normalized.nombreMecanico = match.nombre;
+            }
+            if ((!normalized.taller || normalized.taller === "Taller Oficial" || normalized.taller === "Taller Independiente") && match.taller) {
+              normalized.taller = match.taller;
+            }
           }
         } catch (e) {
-          console.warn("Error hidratando telefonoMecanico:", e);
+          console.warn("Error hidratando datos del mecánico:", e);
         }
       }
 
-      // Valores por defecto seguros si no se encontraron
+      // Valores por defecto seguros solo si el dato original venía completamente vacío
       if (!normalized.codigoMecanico) {
         normalized.codigoMecanico = row.codigoMecanico || row.codigo || "";
       }
       if (!normalized.taller) {
-        normalized.taller = row.taller || "Taller Oficial";
+        normalized.taller = "Taller Autorizado AutoScore";
+      }
+      if (!normalized.nombreMecanico) {
+        normalized.nombreMecanico = normalized.taller ? `Técnico de ${normalized.taller}` : "Mecánico Certificado";
       }
       if (!normalized.fecha) {
         normalized.fecha = row.fecha || "";
@@ -684,8 +706,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
         const tel = getMechanicPhone(row, localMecanicos);
         const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
         uniqueMecsMap[cod] = {
-          taller: row.taller,
-          nombre: foundM ? foundM.nombre : "Técnico Certificado",
+          taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundM ? foundM.taller : "Taller Autorizado"),
+          nombre: row.nombreMecanico || (foundM ? foundM.nombre : (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado")),
           telefono: tel ? String(tel) : "",
           codigo: cod
         };
@@ -1186,10 +1208,20 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                 {/* LÍNEA DE TIEMPO COMPLETA (SOLO CERTIFICADO COMPLETO) */}
                 {activeCertType === "completo" && (
                   <div className="mt-6 space-y-4 relative z-10">
-                    <h5 className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-500 flex items-center gap-1.5 border-b border-white/5 pb-2">
-                      <ClipboardList className="w-4 h-4" />
-                      <span>Línea de Tiempo Verificada ({historial.length})</span>
-                    </h5>
+                    <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-2 border-b border-white/5 pb-2">
+                      <h5 className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
+                        <ClipboardList className="w-4 h-4" />
+                        <span>Línea de Tiempo Verificada ({historial.length})</span>
+                      </h5>
+                      <button
+                        type="button"
+                        onClick={() => setShowSheetsInspector(true)}
+                        className="text-[9px] font-mono font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/20 transition-all flex items-center gap-1 cursor-pointer"
+                      >
+                        <FileText className="w-3 h-3 text-sky-400 shrink-0" />
+                        <span>Ver Datos de Sheets ({useSimulado ? "Simulador" : "Live"})</span>
+                      </button>
+                    </div>
 
                     <div className="space-y-5 max-h-[360px] overflow-y-auto pr-1">
                       {historial.map((row, idx) => {
@@ -1198,12 +1230,14 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                         const formattedTel = formatWhatsAppNumber(tel);
                         
                         const localMecanicos = getSimulatedData().mecanicos;
-                        const foundMec = localMecanicos.find(m => m.codigoMecanico === row.codigoMecanico);
-                        const nombreMec = foundMec ? foundMec.nombre : "Técnico Certificado";
+                        const cleanCode = (row.codigoMecanico || "").trim().toLowerCase();
+                        const foundMec = localMecanicos.find(m => (m.codigoMecanico || "").trim().toLowerCase() === cleanCode);
+                        const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundMec ? foundMec.taller : "Taller Autorizado AutoScore");
+                        const nombreMec = row.nombreMecanico || (foundMec ? foundMec.nombre : (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado"));
                         const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
 
                         // Mensaje personalizado de corroboración para compradores interesados
-                        const textMsg = `Hola ${row.taller || "Taller"}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
+                        const textMsg = `Hola ${tallerReal}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
 
                         return (
                           <div key={idx} className="border-l-2 border-amber-500 pl-4 py-2 relative space-y-3 bg-slate-950/20 rounded-r-xl pr-2 hover:bg-slate-950/40 transition-all duration-200">
@@ -1222,49 +1256,57 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                 type="button"
                                 onClick={() => {
                                   setActiveTecnicoModal({
-                                    taller: row.taller,
+                                    taller: tallerReal,
                                     codigo: row.codigoMecanico,
                                     nombreMecanico: nombreMec,
+                                    mecanicoNombre: nombreMec,
                                     telefono: tel,
                                     fecha: row.fecha,
                                     kilometraje: row.kilometraje,
-                                    trabajo: row.trabajoRealizado
+                                    trabajo: row.trabajoRealizado,
+                                    trabajoRealizado: row.trabajoRealizado
                                   });
                                 }}
                                 className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
                               >
-                                <Shield className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span>Ver Tarjeta del Taller ({row.taller})</span>
+                                <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                <span>Ver Tarjeta del Taller ({tallerReal})</span>
                               </button>
                             </div>
 
                             {/* TARJETA DEL TALLER INTEGRADA (Trazabilidad Inmediata) */}
-                            <div className="bg-[#0b0c10] border border-emerald-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
-                              <div className="text-left space-y-0.5">
+                            <div className="bg-[#0b0c10] border border-amber-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
+                              <div className="text-left space-y-1">
                                 <div className="flex items-center gap-1.5">
-                                  <Shield className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                  <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
                                   <button
                                     type="button"
                                     onClick={() => {
                                       setActiveTecnicoModal({
-                                        taller: row.taller,
+                                        taller: tallerReal,
                                         codigo: row.codigoMecanico,
                                         nombreMecanico: nombreMec,
+                                        mecanicoNombre: nombreMec,
                                         telefono: tel,
                                         fecha: row.fecha,
                                         kilometraje: row.kilometraje,
-                                        trabajo: row.trabajoRealizado
+                                        trabajo: row.trabajoRealizado,
+                                        trabajoRealizado: row.trabajoRealizado
                                       });
                                     }}
-                                    className="font-black text-white text-[11px] uppercase tracking-wide hover:text-emerald-400 transition-colors text-left cursor-pointer"
+                                    className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
                                   >
-                                    {row.taller}
+                                    {tallerReal}
                                   </button>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] text-slate-400 font-mono">
-                                  <span className="text-emerald-500 font-bold">Mecánico: {nombreMec}</span>
-                                  <span className="text-slate-500">• Sello Digital: #{maskedCode}</span>
-                                  {tel && <span className="text-slate-500">• Tel: {tel}</span>}
+                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-slate-300">
+                                  <div className="flex items-center gap-1 text-emerald-400 font-bold">
+                                    <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    <span>Mecánico: <strong className="text-slate-100 font-black">{nombreMec}</strong></span>
+                                  </div>
+                                  <span className="text-slate-500 font-mono text-[9px]">• Sello: #{maskedCode}</span>
+                                  {tel && <span className="text-slate-500 font-mono text-[9px]">• Tel: +{tel}</span>}
                                 </div>
                               </div>
                               
@@ -1328,8 +1370,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
                                 const tel = getMechanicPhone(row, localMecanicos);
                                 const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
                                 uniqueMecsMap[cod] = {
-                                  taller: row.taller,
-                                  nombre: foundM ? foundM.nombre : "Técnico Certificado",
+                                  taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundM ? foundM.taller : "Taller Autorizado"),
+                                  nombre: row.nombreMecanico || (foundM ? foundM.nombre : (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado")),
                                   telefono: tel ? String(tel) : "",
                                   codigo: cod
                                 };
@@ -1547,63 +1589,218 @@ export default function UsuarioView({ useSimulado, appScriptUrl }: UsuarioViewPr
       )}
 
       {/* MODAL FLOTANTE DE TRAZABILIDAD (VERIFICAR TALLER REAL) */}
-      {activeTecnicoModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in no-print">
-          <div className="bg-[#0b0c10] border border-emerald-500/30 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
+      {activeTecnicoModal && (() => {
+        const selectedMantenimiento = activeTecnicoModal;
+        const modalTel = selectedMantenimiento.telefono ? String(selectedMantenimiento.telefono).trim() : "";
+        const finalModalPhone = modalTel ? formatWhatsAppNumber(modalTel) : formatWhatsAppNumber(adminPhoneEnv);
+        const isFallback = !modalTel;
+        
+        const maskedCode = "M****";
+        const tallerName = isFallback ? "Soporte Técnico" : (selectedMantenimiento.taller || "Taller");
+        const trabajoTexto = selectedMantenimiento.trabajoRealizado || selectedMantenimiento.trabajo || "";
+        const fechaTexto = selectedMantenimiento.fecha ? selectedMantenimiento.fecha.split(" ")[0] : "";
+        const kmTexto = selectedMantenimiento.kilometraje != null ? Number(selectedMantenimiento.kilometraje).toLocaleString() : "0";
+        const mecanicoNombre = selectedMantenimiento.mecanicoNombre || selectedMantenimiento.nombreMecanico || "Mecánico Certificado";
+
+        const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${selectedMantenimiento.taller || "Taller"}" con sello digital #${maskedCode} el día ${fechaTexto} con ${kmTexto} km ("${trabajoTexto}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in no-print">
+            <div className="bg-[#0b0c10] border border-emerald-500/30 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
+              <button
+                type="button"
+                onClick={() => setActiveTecnicoModal(null)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="text-center border-b border-white/5 pb-3.5">
+                <div className="inline-flex p-3 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
+                  <Wrench className="w-6 h-6" />
+                </div>
+                <div className="text-[9px] font-mono font-extrabold text-amber-500 uppercase tracking-widest mb-0.5">
+                  Tarjeta de Taller Certificado
+                </div>
+                <h4 className="text-base font-display font-black text-amber-400">
+                  {selectedMantenimiento.taller || "Taller Autorizado AutoScore"}
+                </h4>
+                <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full text-xs text-emerald-400 font-bold mt-2">
+                  <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Mecánico Certificador: <strong className="text-white font-black">{mecanicoNombre}</strong></span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono mt-2">Sello Digital: #M****</p>
+              </div>
+
+              <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Taller / Establecimiento:</span>
+                  <strong className="text-amber-400 font-extrabold">{selectedMantenimiento.taller || "Taller Autorizado"}</strong>
+                </div>
+                <div className="flex justify-between items-center pt-1.5 border-t border-white/5">
+                  <span className="text-slate-400">Mecánico Responsable:</span>
+                  <strong className="text-white font-bold">{mecanicoNombre}</strong>
+                </div>
+                <div className="pt-2 border-t border-white/5 mt-2">
+                  <span>Reparación Certificada:</span>
+                  <p className="text-[11px] text-slate-400 leading-normal font-light mt-1 bg-black/40 p-2 rounded-lg border border-white/5">
+                    "{trabajoTexto}"
+                  </p>
+                </div>
+                <div className="pt-2 border-t border-white/5 mt-2 flex flex-col sm:flex-row justify-between items-start gap-2 text-[10px]">
+                  <div>Fecha: <span className="text-white block font-mono">{fechaTexto}</span></div>
+                  <div>Kilometraje: <span className="text-white block font-mono">{kmTexto} km</span></div>
+                </div>
+              </div>
+
+              {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN */}
+              <a
+                href={`https://wa.me/${finalModalPhone}?text=${encodeURIComponent(modalMsg)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer"
+              >
+                <Phone className="w-4 h-4 shrink-0 fill-current" />
+                <span>{isFallback ? "Validar con Administrador" : "Corroborar con el Taller"}</span>
+              </a>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL INSPECTOR DE DATOS GOOGLE SHEETS */}
+      {showSheetsInspector && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 animate-fade-in no-print">
+          <div className="bg-[#0b0c10] border border-sky-500/30 rounded-3xl p-5 w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl relative">
             <button
-              onClick={() => setActiveTecnicoModal(null)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold"
+              onClick={() => setShowSheetsInspector(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white text-base font-bold bg-white/5 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer"
             >
               ✕
             </button>
 
-            <div className="text-center border-b border-white/5 pb-3">
-              <div className="inline-flex p-3 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 mb-2.5">
-                <Shield className="w-6 h-6" />
+            <div className="text-left border-b border-white/10 pb-3 mb-3 shrink-0 pr-8">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] font-mono font-bold uppercase tracking-wider mb-1">
+                <FileText className="w-3.5 h-3.5" />
+                <span>Inspector de Respuesta de Datos</span>
               </div>
-              <h4 className="text-base font-display font-extrabold text-white">Taller Firmante Autorizado</h4>
-              <p className="text-[10px] text-slate-500 font-mono mt-0.5">Sello Digital: #{activeTecnicoModal.codigo ? String(activeTecnicoModal.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : ""}</p>
-              {activeTecnicoModal.nombreMecanico && (
-                <p className="text-[10px] text-emerald-400 font-mono mt-0.5">Mecánico: {activeTecnicoModal.nombreMecanico}</p>
+              <h3 className="text-base font-display font-extrabold text-white">
+                Verificación de Campos de Google Sheets
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Modo actual: <strong className={useSimulado ? "text-amber-400" : "text-emerald-400"}>{useSimulado ? "Simulador Local" : "Live Google Sheets"}</strong>
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
+              {/* Estado de conexión */}
+              <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-3 space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Origen de Datos:</span>
+                  <span className="text-white font-bold">{useSimulado ? "Memoria / LocalStorage" : "Google Apps Script API"}</span>
+                </div>
+                {!useSimulado && (
+                  <div className="break-all pt-1 border-t border-white/5 text-[10px] text-slate-400">
+                    <span className="text-sky-400 font-bold block">URL Configurada:</span>
+                    {appScriptUrl || "No configurada (Usa el botón ⚙️ en el encabezado superior)"}
+                  </div>
+                )}
+                <div className="flex justify-between items-center pt-1 border-t border-white/5">
+                  <span className="text-slate-400">Registros Procesados:</span>
+                  <span className="text-amber-400 font-black">{historial.length} filas</span>
+                </div>
+              </div>
+
+              {/* Guía de columnas soportadas */}
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 space-y-2">
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
+                  <Wrench className="w-4 h-4 shrink-0" />
+                  <span>Nombres de Columnas Soportados en tu Sheet</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  AutoScore reconoce automáticamente los siguientes nombres de columna en tu hoja de cálculo (insensible a mayúsculas, minúsculas, espacios y acentos):
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono text-slate-300">
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <span className="text-amber-400 font-bold block">Taller / Empresa:</span>
+                    <span className="text-slate-400">Taller, Nombre del Taller, Establecimiento, Empresa, TallerMecanico</span>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <span className="text-emerald-400 font-bold block">Mecánico:</span>
+                    <span className="text-slate-400">Mecánico, Nombre del Mecánico, Tecnico, Responsable, NombreMecanico</span>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <span className="text-sky-400 font-bold block">Sello / Código:</span>
+                    <span className="text-slate-400">CodigoMecanico, Código, Codigo, Sello, Firma, CodigoMec</span>
+                  </div>
+                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
+                    <span className="text-purple-400 font-bold block">Trabajo / Servicio:</span>
+                    <span className="text-slate-400">TrabajoRealizado, Trabajo, Servicio, Mantenimiento, Detalle</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filas normalizadas y mapeadas */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                  <span>Filas Mapeadas en AutoScore ({historial.length})</span>
+                </h4>
+                {historial.length === 0 ? (
+                  <p className="text-slate-500 italic text-center py-4 bg-black/30 rounded-xl">
+                    No se encontraron registros de historial para esta unidad.
+                  </p>
+                ) : (
+                  historial.map((h, i) => (
+                    <div key={i} className="bg-slate-950 border border-white/10 p-3 rounded-2xl space-y-1.5 font-mono text-[10px]">
+                      <div className="flex justify-between items-center text-amber-400 font-bold border-b border-white/5 pb-1">
+                        <span>Fila #{i + 1}</span>
+                        <span className="text-slate-400 text-[9px]">{h.fecha ? h.fecha.split(" ")[0] : "Sin fecha"} • {h.kilometraje != null ? Number(h.kilometraje).toLocaleString() : 0} km</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 pt-1">
+                        <div>
+                          <span className="text-slate-500 block">Taller Mapeado:</span>
+                          <span className="text-amber-300 font-bold">{h.taller || "Taller Autorizado AutoScore"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Mecánico Mapeado:</span>
+                          <span className="text-emerald-300 font-bold">{h.nombreMecanico || "Técnico Certificado"}</span>
+                        </div>
+                      </div>
+                      <div className="pt-1 border-t border-white/5">
+                        <span className="text-slate-500 block">Código / Sello Digital:</span>
+                        <span className="text-slate-200">{h.codigoMecanico || "(Sin código)"}</span>
+                      </div>
+                      <div className="pt-1 border-t border-white/5">
+                        <span className="text-slate-500 block">Trabajo Realizado:</span>
+                        <span className="text-slate-300 font-sans text-[11px] block mt-0.5">{h.trabajoRealizado}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Raw Payload JSON */}
+              {rawSheetsPayload && (
+                <div className="space-y-1 pt-2 border-t border-white/10">
+                  <span className="text-slate-400 font-mono text-[10px] font-bold uppercase block">
+                    Respuesta JSON Raw del Servidor:
+                  </span>
+                  <pre className="bg-black/70 p-3 rounded-2xl border border-white/5 text-[9.5px] font-mono text-emerald-400 max-h-40 overflow-auto whitespace-pre-wrap leading-tight">
+                    {JSON.stringify(rawSheetsPayload, null, 2)}
+                  </pre>
+                </div>
               )}
             </div>
 
-            <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
-              <div>Establecimiento: <strong className="text-white block mt-0.5">{activeTecnicoModal.taller}</strong></div>
-              <div className="pt-2 border-t border-white/5 mt-2">
-                <span>Reparación Certificada:</span>
-                <p className="text-[11px] text-slate-400 leading-normal font-light mt-1 bg-black/40 p-2 rounded-lg border border-white/5">
-                  "{activeTecnicoModal.trabajo}"
-                </p>
-              </div>
-              <div className="pt-2 border-t border-white/5 mt-2 flex flex-col sm:flex-row justify-between items-start gap-2 text-[10px]">
-                <div>Fecha: <span className="text-white block font-mono">{activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""}</span></div>
-                <div>Kilometraje: <span className="text-white block font-mono">{activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km</span></div>
-              </div>
+            <div className="pt-3 border-t border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowSheetsInspector(false)}
+                className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cerrar Inspector
+              </button>
             </div>
-
-            {/* BOTÓN WA.ME DIRECTO DE CORROBORACIÓN - Siempre visible, con fallback al administrador si es necesario */}
-            {(() => {
-              const modalTel = activeTecnicoModal.telefono ? String(activeTecnicoModal.telefono).trim() : "";
-              const finalModalPhone = modalTel ? formatWhatsAppNumber(modalTel) : formatWhatsAppNumber(adminPhoneEnv);
-              const isFallback = !modalTel;
-              
-              const maskedCode = activeTecnicoModal.codigo ? String(activeTecnicoModal.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
-              const tallerName = isFallback ? "Soporte Técnico" : (activeTecnicoModal.taller || "Taller");
-              const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${activeTecnicoModal.taller || "Taller"}" con sello digital #${maskedCode} el día ${activeTecnicoModal.fecha ? activeTecnicoModal.fecha.split(" ")[0] : ""} con ${activeTecnicoModal.kilometraje != null ? Number(activeTecnicoModal.kilometraje).toLocaleString() : "0"} km ("${activeTecnicoModal.trabajo || ""}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
-              
-              return (
-                <a
-                  href={`https://wa.me/${finalModalPhone}?text=${encodeURIComponent(modalMsg)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full inline-flex items-center justify-center gap-2 bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer"
-                >
-                  <Phone className="w-4 h-4 shrink-0 fill-current" />
-                  <span>{isFallback ? "Validar con Administrador" : "Corroborar con el Taller"}</span>
-                </a>
-              );
-            })()}
           </div>
         </div>
       )}
