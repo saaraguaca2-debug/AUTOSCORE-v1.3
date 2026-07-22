@@ -61,10 +61,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
   const [showFaceToFaceQR, setShowFaceToFaceQR] = useState(false);
   const [showMecanicoQR, setShowMecanicoQR] = useState(false);
   const [activeTecnicoModal, setActiveTecnicoModal] = useState<any | null>(null);
-  
-  // Inspector / Debugger de Google Sheets
-  const [rawSheetsPayload, setRawSheetsPayload] = useState<any>(null);
-  const [showSheetsInspector, setShowSheetsInspector] = useState(false);
 
   const [baseUrlOverride, setBaseUrlOverride] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -119,7 +115,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
 
       if (isSimulado) {
         const res = simularGetCertificado(placa, tipo);
-        setRawSheetsPayload({ fuente: "Simulador Local", ...res });
         if (res.success) {
           setSelectedCar(res.vehiculo);
           setHistorial(normalizeHistorial(res.historial || []));
@@ -136,7 +131,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
         const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
         if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
         const result = await response.json();
-        setRawSheetsPayload({ fuente: "Google Sheets Live", url: apiUr, ...result });
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
           setHistorial(normalizeHistorial(result.historial || []));
@@ -311,7 +305,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     try {
       if (useSimulado) {
         const res = simularGetCertificado(veh.placa, tipo);
-        setRawSheetsPayload({ fuente: "Simulador Local", ...res });
         if (res.success) {
           setSelectedCar(res.vehiculo);
           setHistorial(normalizeHistorial(res.historial || []));
@@ -325,7 +318,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
         const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
         if (!response.ok) throw new Error("Error en red.");
         const result = await response.json();
-        setRawSheetsPayload({ fuente: "Google Sheets Live", url: appScriptUrl, ...result });
         if (result && result.success) {
           setSelectedCar(result.vehiculo);
           setHistorial(normalizeHistorial(result.historial || []));
@@ -654,10 +646,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
             if (!normalized.telefonoMecanico && match.telefono) {
               normalized.telefonoMecanico = String(match.telefono).trim();
             }
-            if (!normalized.nombreMecanico && match.nombre) {
+            if (match.nombre) {
               normalized.nombreMecanico = match.nombre;
             }
-            if ((!normalized.taller || normalized.taller === "Taller Oficial" || normalized.taller === "Taller Independiente") && match.taller) {
+            if ((!normalized.taller || normalized.taller === "Taller Oficial" || normalized.taller === "Taller Independiente" || normalized.taller.startsWith("Taller Autorizado")) && match.taller) {
               normalized.taller = match.taller;
             }
           }
@@ -1213,14 +1205,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
                         <ClipboardList className="w-4 h-4" />
                         <span>Línea de Tiempo Verificada ({historial.length})</span>
                       </h5>
-                      <button
-                        type="button"
-                        onClick={() => setShowSheetsInspector(true)}
-                        className="text-[9px] font-mono font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1 rounded-lg border border-sky-500/20 transition-all flex items-center gap-1 cursor-pointer"
-                      >
-                        <FileText className="w-3 h-3 text-sky-400 shrink-0" />
-                        <span>Ver Datos de Sheets ({useSimulado ? "Simulador" : "Live"})</span>
-                      </button>
                     </div>
 
                     <div className="space-y-5 max-h-[360px] overflow-y-auto pr-1">
@@ -1233,7 +1217,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
                         const cleanCode = (row.codigoMecanico || "").trim().toLowerCase();
                         const foundMec = localMecanicos.find(m => (m.codigoMecanico || "").trim().toLowerCase() === cleanCode);
                         const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundMec ? foundMec.taller : "Taller Autorizado AutoScore");
-                        const nombreMec = row.nombreMecanico || (foundMec ? foundMec.nombre : (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado"));
+                        const nombreMec = (foundMec && foundMec.nombre) ? foundMec.nombre : (row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (foundMec ? foundMec.nombre : (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado")));
                         const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
 
                         // Mensaje personalizado de corroboración para compradores interesados
@@ -1667,143 +1651,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
           </div>
         );
       })()}
-
-      {/* MODAL INSPECTOR DE DATOS GOOGLE SHEETS */}
-      {showSheetsInspector && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 animate-fade-in no-print">
-          <div className="bg-[#0b0c10] border border-sky-500/30 rounded-3xl p-5 w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl relative">
-            <button
-              onClick={() => setShowSheetsInspector(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-white text-base font-bold bg-white/5 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer"
-            >
-              ✕
-            </button>
-
-            <div className="text-left border-b border-white/10 pb-3 mb-3 shrink-0 pr-8">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 text-[10px] font-mono font-bold uppercase tracking-wider mb-1">
-                <FileText className="w-3.5 h-3.5" />
-                <span>Inspector de Respuesta de Datos</span>
-              </div>
-              <h3 className="text-base font-display font-extrabold text-white">
-                Verificación de Campos de Google Sheets
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Modo actual: <strong className={useSimulado ? "text-amber-400" : "text-emerald-400"}>{useSimulado ? "Simulador Local" : "Live Google Sheets"}</strong>
-              </p>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
-              {/* Estado de conexión */}
-              <div className="bg-slate-900/80 border border-white/10 rounded-2xl p-3 space-y-1.5 font-mono text-[11px]">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Origen de Datos:</span>
-                  <span className="text-white font-bold">{useSimulado ? "Memoria / LocalStorage" : "Google Apps Script API"}</span>
-                </div>
-                {!useSimulado && (
-                  <div className="break-all pt-1 border-t border-white/5 text-[10px] text-slate-400">
-                    <span className="text-sky-400 font-bold block">URL Configurada:</span>
-                    {appScriptUrl || "No configurada (Usa el botón ⚙️ en el encabezado superior)"}
-                  </div>
-                )}
-                <div className="flex justify-between items-center pt-1 border-t border-white/5">
-                  <span className="text-slate-400">Registros Procesados:</span>
-                  <span className="text-amber-400 font-black">{historial.length} filas</span>
-                </div>
-              </div>
-
-              {/* Guía de columnas soportadas */}
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 space-y-2">
-                <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs">
-                  <Wrench className="w-4 h-4 shrink-0" />
-                  <span>Nombres de Columnas Soportados en tu Sheet</span>
-                </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
-                  AutoScore reconoce automáticamente los siguientes nombres de columna en tu hoja de cálculo (insensible a mayúsculas, minúsculas, espacios y acentos):
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono text-slate-300">
-                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
-                    <span className="text-amber-400 font-bold block">Taller / Empresa:</span>
-                    <span className="text-slate-400">Taller, Nombre del Taller, Establecimiento, Empresa, TallerMecanico</span>
-                  </div>
-                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
-                    <span className="text-emerald-400 font-bold block">Mecánico:</span>
-                    <span className="text-slate-400">Mecánico, Nombre del Mecánico, Tecnico, Responsable, NombreMecanico</span>
-                  </div>
-                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
-                    <span className="text-sky-400 font-bold block">Sello / Código:</span>
-                    <span className="text-slate-400">CodigoMecanico, Código, Codigo, Sello, Firma, CodigoMec</span>
-                  </div>
-                  <div className="bg-black/40 p-2 rounded-xl border border-white/5">
-                    <span className="text-purple-400 font-bold block">Trabajo / Servicio:</span>
-                    <span className="text-slate-400">TrabajoRealizado, Trabajo, Servicio, Mantenimiento, Detalle</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Filas normalizadas y mapeadas */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center justify-between">
-                  <span>Filas Mapeadas en AutoScore ({historial.length})</span>
-                </h4>
-                {historial.length === 0 ? (
-                  <p className="text-slate-500 italic text-center py-4 bg-black/30 rounded-xl">
-                    No se encontraron registros de historial para esta unidad.
-                  </p>
-                ) : (
-                  historial.map((h, i) => (
-                    <div key={i} className="bg-slate-950 border border-white/10 p-3 rounded-2xl space-y-1.5 font-mono text-[10px]">
-                      <div className="flex justify-between items-center text-amber-400 font-bold border-b border-white/5 pb-1">
-                        <span>Fila #{i + 1}</span>
-                        <span className="text-slate-400 text-[9px]">{h.fecha ? h.fecha.split(" ")[0] : "Sin fecha"} • {h.kilometraje != null ? Number(h.kilometraje).toLocaleString() : 0} km</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1 pt-1">
-                        <div>
-                          <span className="text-slate-500 block">Taller Mapeado:</span>
-                          <span className="text-amber-300 font-bold">{h.taller || "Taller Autorizado AutoScore"}</span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 block">Mecánico Mapeado:</span>
-                          <span className="text-emerald-300 font-bold">{h.nombreMecanico || "Técnico Certificado"}</span>
-                        </div>
-                      </div>
-                      <div className="pt-1 border-t border-white/5">
-                        <span className="text-slate-500 block">Código / Sello Digital:</span>
-                        <span className="text-slate-200">{h.codigoMecanico || "(Sin código)"}</span>
-                      </div>
-                      <div className="pt-1 border-t border-white/5">
-                        <span className="text-slate-500 block">Trabajo Realizado:</span>
-                        <span className="text-slate-300 font-sans text-[11px] block mt-0.5">{h.trabajoRealizado}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Raw Payload JSON */}
-              {rawSheetsPayload && (
-                <div className="space-y-1 pt-2 border-t border-white/10">
-                  <span className="text-slate-400 font-mono text-[10px] font-bold uppercase block">
-                    Respuesta JSON Raw del Servidor:
-                  </span>
-                  <pre className="bg-black/70 p-3 rounded-2xl border border-white/5 text-[9.5px] font-mono text-emerald-400 max-h-40 overflow-auto whitespace-pre-wrap leading-tight">
-                    {JSON.stringify(rawSheetsPayload, null, 2)}
-                  </pre>
-                </div>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-white/10 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowSheetsInspector(false)}
-                className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
-              >
-                Cerrar Inspector
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

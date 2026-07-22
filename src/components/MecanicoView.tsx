@@ -81,7 +81,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     }
   }, []);
 
-  // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA)
+  // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA Y DATOS REALES DE GOOGLE SHEETS)
   const handleMecanicoLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!codigoMecanico.trim()) return;
@@ -90,69 +90,70 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     setLoginError(null);
 
     try {
+      const cleanInput = codigoMecanico.trim().toLowerCase();
+      let foundMec: any = null;
+
       if (useSimulado) {
         // Validación con base de datos simulada
-        setTimeout(() => {
-          const data = getSimulatedData();
-          const mec = data.mecanicos.find(
-            (m) => m.codigoMecanico.toLowerCase() === codigoMecanico.trim().toLowerCase()
-          );
-
-          if (!mec) {
-            const cleanCode = codigoMecanico.trim().toUpperCase();
-            const newMec = {
-              codigoMecanico: cleanCode,
-              nombre: `Técnico Homologado #${cleanCode}`,
-              taller: `Taller Afiliado #${cleanCode}`,
-              estado: "Activo" as const,
-              telefono: "584120000000"
-            };
-            data.mecanicos.push(newMec);
-            saveSimulatedData(data);
-            setLoggedMecanico(newMec);
-          } else if (mec.estado === "Suspendido") {
-            setLoginError(
-              `ACCESO DENEGADO: La membresía del técnico ${mec.nombre} (${mec.taller}) está SUSPENDIDA por falta de pago. Regularice el estado de cuenta para operar.`
-            );
-          } else {
-            setLoggedMecanico(mec);
-          }
-          setLoadingLogin(false);
-        }, 800);
-      } else {
-        // En producción real conectada a Sheets, permitimos el ingreso con el código y validaremos
-        // al enviar el POST completo. Para una experiencia premium, consultamos a la base de datos local
-        // primero o permitimos ingresar para ejecutar el filtro estricto durante la firma.
-        // Vamos a verificar localmente para agilizar, y aplicar validación estricta en el doPost.
         const data = getSimulatedData();
-        const mec = data.mecanicos.find(
-          (m) => m.codigoMecanico.toLowerCase() === codigoMecanico.trim().toLowerCase()
+        foundMec = data.mecanicos.find(
+          (m) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
         );
-
-        if (mec) {
-          if (mec.estado === "Suspendido") {
-            setLoginError(
-              `ACCESO DENEGADO (Sincronizado): La membresía del taller ${mec.taller} está SUSPENDIDA. Debe cancelar la cuota de afiliación de AutoScore para firmar mantenimientos.`
-            );
-            setLoadingLogin(false);
-            return;
+      } else {
+        // En producción real conectada a Google Sheets, consultamos la pestaña Mecanicos vía Apps Script
+        if (appScriptUrl) {
+          try {
+            const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
+            if (res.ok) {
+              const json = await res.json();
+              if (json && json.success && Array.isArray(json.mecanicos)) {
+                foundMec = json.mecanicos.find(
+                  (m: any) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
+                );
+              }
+            }
+          } catch (netErr) {
+            console.warn("No se pudo conectar a Google Sheets para verificar mecánico, consultando base local", netErr);
           }
-          setLoggedMecanico(mec);
-        } else {
-          // Si es un código personalizado, en producción confiamos y dejamos entrar;
-          // el Apps Script se encargará de rechazarlo en el doPost si no existe.
-          // Creamos una estructura provisoria para la sesión.
-          setLoggedMecanico({
-            codigoMecanico: codigoMecanico.trim().toUpperCase(),
-            nombre: "Técnico Certificado #" + codigoMecanico.trim(),
-            taller: "Taller Afiliado",
-            estado: "Activo"
-          });
         }
-        setLoadingLogin(false);
+
+        // Si no se encontró en Google Sheets, buscar en simulado local como fallback
+        if (!foundMec) {
+          const data = getSimulatedData();
+          foundMec = data.mecanicos.find(
+            (m) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
+          );
+        }
       }
+
+      if (foundMec) {
+        if (foundMec.estado === "Suspendido") {
+          setLoginError(
+            `ACCESO DENEGADO: La membresía del taller ${foundMec.taller || "Afiliado"} (${foundMec.nombre || "Técnico"}) está SUSPENDIDA por falta de pago. Regularice el estado de cuenta para operar.`
+          );
+        } else {
+          setLoggedMecanico(foundMec);
+        }
+      } else {
+        // Si no está registrado previamente, se da de alta con su código y denominación autorizada
+        const cleanCode = codigoMecanico.trim().toUpperCase();
+        const newMec = {
+          codigoMecanico: cleanCode,
+          nombre: `Técnico Homologado #${cleanCode}`,
+          taller: `Taller Autorizado #${cleanCode}`,
+          estado: "Activo" as const,
+          telefono: "584120000000"
+        };
+        const data = getSimulatedData();
+        if (!data.mecanicos.some(m => m.codigoMecanico.toUpperCase() === cleanCode)) {
+          data.mecanicos.push(newMec);
+          saveSimulatedData(data);
+        }
+        setLoggedMecanico(newMec);
+      }
+      setLoadingLogin(false);
     } catch (err: any) {
-      setLoginError("Fallo en la autenticación del técnico.");
+      setLoginError("Fallo en la autenticación del técnico: " + (err.message || "Error desconocido"));
       setLoadingLogin(false);
     }
   };
