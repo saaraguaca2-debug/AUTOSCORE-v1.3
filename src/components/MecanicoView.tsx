@@ -335,13 +335,13 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     setFormError(null);
     setFormSuccess(null);
 
+    const descripcionCombinada = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nTrabajo: ${cleanTrabajo}`;
+
     const payload = {
       codigoMecanico: loggedMecanico.codigoMecanico,
-      nombreMecanico: loggedMecanico.nombre,
-      taller: loggedMecanico.taller,
       placa: cleanPlaca,
       kilometraje: kmNum,
-      trabajo: cleanTrabajo
+      trabajo: descripcionCombinada
     };
 
     try {
@@ -769,7 +769,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                   `Escáner OBD2: ${qOBD === 20 ? "Sistema limpio (sin códigos de falla)" : qOBD === 10 ? "Códigos guardados secundarios" : "Testigo Check Engine activo / Falla eléctrica"}`,
                   `Neumáticos: ${qNeumaticos === 20 ? "Excelente estado (vida >70%)" : qNeumaticos === 10 ? "Desgaste medio (30%-70%)" : "Inseguro (neumáticos lisos)"}`
                 ];
-                const trabajoInspeccion = `INSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
+                const trabajoInspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nINSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
 
                 try {
                   if (useSimulado) {
@@ -793,8 +793,6 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
 
                       const resMaint = simularPostMantenimiento({
                         codigoMecanico: loggedMecanico.codigoMecanico,
-                        nombreMecanico: loggedMecanico.nombre,
-                        taller: loggedMecanico.taller,
                         placa: cleanPlaca,
                         kilometraje: kmNum,
                         trabajo: trabajoInspeccion
@@ -865,8 +863,6 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                       headers: { "Content-Type": "text/plain;charset=utf-8" },
                       body: JSON.stringify({
                         codigoMecanico: loggedMecanico.codigoMecanico,
-                        nombreMecanico: loggedMecanico.nombre,
-                        taller: loggedMecanico.taller,
                         placa: cleanPlaca,
                         kilometraje: kmNum,
                         trabajo: trabajoInspeccion
