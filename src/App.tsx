@@ -64,25 +64,33 @@ export default function App() {
 
   // Contador en tiempo real de solicitudes de usuario pendientes de aprobación para notificar al Admin
   const [solicitudesCount, setSolicitudesCount] = useState<number>(() => {
-    return getSolicitudesPendientesCount();
+    return useSimulado ? getSolicitudesPendientesCount() : 0;
   });
 
   useEffect(() => {
     const sincronizarSolicitudes = () => {
-      const count = getSolicitudesPendientesCount();
-      setSolicitudesCount(count);
-
-      // Si está en modo Live Sheets y hay URL configurada, verificar en segundo plano
-      if (!useSimulado && appScriptUrl) {
-        fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
-          .then(res => res.json())
-          .then(data => {
-            if (data && data.success && Array.isArray(data.usuarios)) {
-              const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
-              setSolicitudesCount(liveCount);
-            }
-          })
-          .catch(() => {});
+      if (useSimulado) {
+        const count = getSolicitudesPendientesCount();
+        setSolicitudesCount(count);
+      } else {
+        // En modo Live Sheets solo consultar la nube y no el almacenamiento local simulado
+        if (appScriptUrl) {
+          fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.success && Array.isArray(data.usuarios)) {
+                const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+                setSolicitudesCount(liveCount);
+              } else {
+                setSolicitudesCount(0);
+              }
+            })
+            .catch(() => {
+              setSolicitudesCount(0);
+            });
+        } else {
+          setSolicitudesCount(0);
+        }
       }
     };
 

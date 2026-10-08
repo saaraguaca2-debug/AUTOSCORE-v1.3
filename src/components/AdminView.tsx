@@ -45,6 +45,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
 
   // Tab seleccionada
   const [activeAdminTab, setActiveAdminTab] = useState<"dashboard" | "usuarios" | "vehiculos" | "mecanicos" | "ajustes">("dashboard");
+  const [filtroUsuario, setFiltroUsuario] = useState<"todos" | "pendientes" | "aprobados">("todos");
 
   // Manejar Login del Admin
   const handleAdminLogin = (e: React.FormEvent) => {
@@ -52,9 +53,10 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
     if (password === adminPasswordEnv) {
       setIsAuthorized(true);
       setAuthError(null);
-      const pending = getSolicitudesPendientesCount();
+      const pending = useSimulado ? getSolicitudesPendientesCount() : 0;
       if (pending > 0) {
         setActiveAdminTab("usuarios");
+        setFiltroUsuario("pendientes");
       }
       cargarDatos();
     } else {
@@ -187,7 +189,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   };
 
   if (!isAuthorized) {
-    const pendingCount = getSolicitudesPendientesCount();
+    const pendingCount = useSimulado ? getSolicitudesPendientesCount() : 0;
 
     return (
       <div className="w-full max-w-md mx-auto px-4 py-12 flex flex-col items-center animate-fade-in">
@@ -353,13 +355,28 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
       {!loading && activeAdminTab === "dashboard" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Usuarios</span>
+            <div 
+              onClick={() => {
+                setActiveAdminTab("usuarios");
+                if (usuariosPendientes > 0) setFiltroUsuario("pendientes");
+              }}
+              className="bg-slate-900/40 border border-white/5 hover:border-amber-500/30 p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-colors"
+              title="Click para ver lista de usuarios y solicitudes"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Usuarios</span>
+                <span className="text-[9px] text-amber-500 font-bold hover:underline">Ver →</span>
+              </div>
               <div className="flex justify-between items-baseline mt-2">
                 <span className="text-2xl font-mono font-extrabold text-white">{usuarios.length}</span>
-                {usuariosPendientes > 0 && (
-                  <span className="text-[10px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                {usuariosPendientes > 0 ? (
+                  <span className="text-[10px] font-bold text-red-300 bg-red-500/20 border border-red-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
                     {usuariosPendientes} Pend.
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                    0 Pend.
                   </span>
                 )}
               </div>
@@ -417,13 +434,82 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
       {/* 2. SECCIÓN USUARIOS (DUEÑOS) */}
       {!loading && activeAdminTab === "usuarios" && (
         <div className="space-y-3 animate-in fade-in duration-200">
-          <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
-            Aprobación de Propietarios Registrados
-          </h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+              Aprobación de Propietarios
+            </h4>
+            {usuariosPendientes === 0 ? (
+              <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                0 pendientes
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-red-300 bg-red-500/20 border border-red-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                {usuariosPendientes} por aprobar
+              </span>
+            )}
+          </div>
+
+          {/* Filtros de estado */}
+          <div className="grid grid-cols-3 bg-slate-950 border border-white/5 p-1 rounded-xl gap-1 text-[10px] font-bold">
+            <button
+              onClick={() => setFiltroUsuario("todos")}
+              className={`py-1.5 rounded-lg transition-colors ${
+                filtroUsuario === "todos" ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Todos ({usuarios.length})
+            </button>
+            <button
+              onClick={() => setFiltroUsuario("pendientes")}
+              className={`py-1.5 rounded-lg transition-colors relative ${
+                filtroUsuario === "pendientes" ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Pendientes ({usuariosPendientes})
+              {usuariosPendientes > 0 && (
+                <span className="ml-1 w-2 h-2 rounded-full bg-red-500 inline-block align-middle" />
+              )}
+            </button>
+            <button
+              onClick={() => setFiltroUsuario("aprobados")}
+              className={`py-1.5 rounded-lg transition-colors ${
+                filtroUsuario === "aprobados" ? "bg-amber-500 text-slate-950 font-black" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Aprobados ({usuarios.filter(u => u.estadoUsuario === "Aprobado").length})
+            </button>
+          </div>
+
+          {usuariosPendientes > 0 && filtroUsuario !== "pendientes" && (
+            <div 
+              onClick={() => setFiltroUsuario("pendientes")}
+              className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl flex items-center justify-between text-xs text-amber-300 cursor-pointer hover:bg-amber-500/20 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span className="text-[11px] font-bold">
+                  {usuariosPendientes} {usuariosPendientes === 1 ? "solicitud de registro pendiente" : "solicitudes de registro pendientes"}
+                </span>
+              </div>
+              <span className="text-[10px] font-black underline">Filtrar</span>
+            </div>
+          )}
           
-          <div className="space-y-2.5 max-h-[460px] overflow-y-auto">
-            {usuarios.map((usr, idx) => (
-              <div key={idx} className="bg-slate-900/40 border border-white/5 p-3 rounded-2xl space-y-2">
+          <div className="space-y-2.5 max-h-[440px] overflow-y-auto">
+            {usuarios
+              .filter(usr => {
+                if (filtroUsuario === "pendientes") return usr.estadoUsuario === "Pendiente";
+                if (filtroUsuario === "aprobados") return usr.estadoUsuario === "Aprobado";
+                return true;
+              })
+              .map((usr, idx) => (
+              <div key={idx} className={`border p-3 rounded-2xl space-y-2 transition-all ${
+                usr.estadoUsuario === "Pendiente" 
+                  ? "bg-amber-500/5 border-amber-500/30 shadow-md shadow-amber-950/20" 
+                  : "bg-slate-900/40 border-white/5"
+              }`}>
                 <div className="flex justify-between items-start">
                   <div>
                     <span className="text-xs font-bold text-white block">{usr.nombre}</span>
@@ -432,9 +518,9 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
                   <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
                     usr.estadoUsuario === "Aprobado"
                       ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      : "bg-amber-500/15 text-amber-300 border border-amber-500/30 font-black animate-pulse"
                   }`}>
-                    {usr.estadoUsuario}
+                    {usr.estadoUsuario === "Pendiente" ? "Solicitud Pendiente" : usr.estadoUsuario}
                   </span>
                 </div>
 
@@ -442,15 +528,15 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
                   {usr.estadoUsuario !== "Aprobado" ? (
                     <button
                       onClick={() => ejecutarUpdate("actualizarUsuario", usr.idDueno, "Aprobado")}
-                      className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-2.5 py-1 rounded-lg flex items-center gap-1"
+                      className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-md shadow-emerald-950/20 cursor-pointer active:scale-95 transition-all"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
-                      <span>Aprobar</span>
+                      <span>Aprobar Acceso</span>
                     </button>
                   ) : (
                     <button
                       onClick={() => ejecutarUpdate("actualizarUsuario", usr.idDueno, "Pendiente")}
-                      className="text-[10px] font-bold bg-slate-950 hover:bg-slate-900 text-slate-400 border border-white/5 px-2.5 py-1 rounded-lg flex items-center gap-1"
+                      className="text-[10px] font-bold bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-red-400 border border-white/5 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                     >
                       <XCircle className="w-3.5 h-3.5" />
                       <span>Inhabilitar</span>
@@ -459,6 +545,15 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
                 </div>
               </div>
             ))}
+            
+            {filtroUsuario === "pendientes" && usuariosPendientes === 0 && (
+              <div className="text-center py-8 bg-slate-900/20 border border-white/5 rounded-2xl p-4">
+                <CheckCircle2 className="w-7 h-7 text-emerald-400 mx-auto mb-2" />
+                <p className="text-xs font-bold text-white">No hay solicitudes pendientes</p>
+                <p className="text-[11px] text-slate-400 mt-1">Todos los usuarios registrados han sido aprobados y tienen acceso activo.</p>
+              </div>
+            )}
+
             {usuarios.length === 0 && (
               <p className="text-xs text-slate-500 text-center py-8">No hay usuarios dueños registrados.</p>
             )}

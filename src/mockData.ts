@@ -61,7 +61,7 @@ const MOCK_USUARIOS_INICIAL: UsuarioPropietario[] = [
     idDueno: "12987654",
     nombre: "María Rodríguez",
     contrasena: "contrasena",
-    estadoUsuario: "Pendiente"
+    estadoUsuario: "Aprobado"
   }
 ];
 
@@ -188,6 +188,28 @@ export function inicializarBaseDatosSimulada() {
     localStorage.setItem("autoscore_historial", JSON.stringify(MOCK_HISTORIAL));
     localStorage.setItem("autoscore_inicializado", "true");
     console.log("AutoScore DB local inicializada con éxito.");
+  }
+
+  // Corregir usuario demo Maria Rodriguez si quedó con estado Pendiente previo en localStorage
+  if (isBrowser) {
+    try {
+      const rawUsers = localStorage.getItem("autoscore_usuarios");
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers) as UsuarioPropietario[];
+        let changed = false;
+        users.forEach(u => {
+          if (u.idDueno === "12987654" && u.estadoUsuario === "Pendiente") {
+            u.estadoUsuario = "Aprobado";
+            changed = true;
+          }
+        });
+        if (changed) {
+          localStorage.setItem("autoscore_usuarios", JSON.stringify(users));
+        }
+      }
+    } catch (e) {
+      // Ignorar
+    }
   }
 
   // Sincronizar placa de la URL sobre la marcha para facilitar pruebas multidispositivo
