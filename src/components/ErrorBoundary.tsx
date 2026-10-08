@@ -29,7 +29,6 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   private handleReset = () => {
     localStorage.removeItem("autoscore_appscript_url");
-    localStorage.setItem("autoscore_use_simulado", "true");
     this.setState({ hasError: false, error: null, errorInfo: null });
     window.location.reload();
   };
@@ -55,10 +54,10 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
             <button
               onClick={this.handleReset}
-              className="mt-6 w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+              className="mt-6 w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
-              Restablecer y Usar Simulador
+              Restablecer Conexión
             </button>
             <p className="text-[10px] text-slate-500 mt-3">
               Esto desconectará temporalmente la URL para que puedas reingresar con seguridad.

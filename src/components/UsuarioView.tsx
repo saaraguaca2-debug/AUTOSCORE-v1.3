@@ -6,10 +6,7 @@ import {
   PenTool, Share2, FileText
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
-import { 
-  simularGetPorDueno, simularGetCertificado, simularRegistrarVehiculo, 
-  simularLogin, simularRegistroUsuario, getSimulatedData, notifyDataChanged
-} from "../mockData";
+import { notifyDataChanged } from "../mockData";
 
 // Decodificador seguro para prevenir fallas fatales (URI Malformed) en navegadores móviles
 function safeDecodeURIComponent(str: string): string {
@@ -21,12 +18,11 @@ function safeDecodeURIComponent(str: string): string {
 }
 
 interface UsuarioViewProps {
-  useSimulado: boolean;
   appScriptUrl: string;
   initialMode?: "login" | "registro";
 }
 
-export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "login" }: UsuarioViewProps) {
+export default function UsuarioView({ appScriptUrl, initialMode = "login" }: UsuarioViewProps) {
   // Variables ocultas para Vercel / Entorno
   const adminPhoneEnv = (import.meta as any).env?.VITE_ADMIN_PHONE || (import.meta as any).env?.NEXT_PUBLIC_ADMIN_PHONE || "584121111111";
 
@@ -106,39 +102,23 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     setError(null);
     try {
       const params = new URLSearchParams(window.location.search);
-      const urlSimulado = params.get("simulado");
       const urlApi = params.get("api");
-      
-      // FALLBACK SÓLIDO PARA EVITAR CONDICIÓN DE CARRERA DE ESTADOS DE REACT
-      const isSimulado = urlSimulado !== null ? urlSimulado === "true" : useSimulado;
       const apiUr = urlApi ? safeDecodeURIComponent(urlApi) : appScriptUrl;
 
-      if (isSimulado) {
-        const res = simularGetCertificado(placa, tipo);
-        if (res.success) {
-          setSelectedCar(res.vehiculo);
-          setHistorial(normalizeHistorial(res.historial || []));
-          setActiveCertType(tipo);
-          setViewMode("certificado");
-        } else {
-          setError(res.error || "No se pudo recuperar el certificado.");
-        }
+      if (!apiUr) {
+        throw new Error("Debe configurar la URL del Google Sheets Apps Script.");
+      }
+      const fetchUrl = `${apiUr}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
+      const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
+      if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
+      const result = await response.json();
+      if (result && result.success) {
+        setSelectedCar(result.vehiculo);
+        setHistorial(normalizeHistorial(result.historial || []));
+        setActiveCertType(tipo);
+        setViewMode("certificado");
       } else {
-        if (!apiUr) {
-          throw new Error("Debe configurar la URL del Google Sheets Apps Script.");
-        }
-        const fetchUrl = `${apiUr}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
-        const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
-        if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
-        const result = await response.json();
-        if (result && result.success) {
-          setSelectedCar(result.vehiculo);
-          setHistorial(normalizeHistorial(result.historial || []));
-          setActiveCertType(tipo);
-          setViewMode("certificado");
-        } else {
-          setError(result.error || "Fallo en la respuesta de Google Sheets.");
-        }
+        setError(result.error || "Fallo en la respuesta de Google Sheets.");
       }
     } catch (err: any) {
       setError(err.message || "Error al conectar con la base de datos.");
@@ -159,59 +139,44 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     setSuccessMsg(null);
 
     try {
-      if (useSimulado) {
-        const res = simularLogin(idDuenoInput, contrasenaInput);
-        if (res.success && res.usuario) {
-          const resVeh = simularGetPorDueno(idDuenoInput);
-          setVehiculos(resVeh.data || []);
-          setLoggedUser({
-            idDueno: res.usuario?.idDueno || idDuenoInput.trim(),
-            nombre: res.usuario?.nombre || idDuenoInput.trim()
-          });
-          setViewMode("garage");
-        } else {
-          setError(res.error || "Error de credenciales.");
+      if (!appScriptUrl) {
+        throw new Error("La URL de Google Sheets Apps Script no está configurada en la barra superior.");
+      }
+      const url = `${appScriptUrl}?accion=login&idDueno=${encodeURIComponent(idDuenoInput.trim())}&contrasena=${encodeURIComponent(contrasenaInput.trim())}`;
+      const res = await fetch(url, { method: "GET", mode: "cors" });
+      if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
+      const json = await res.json();
+      if (json && json.success) {
+        const userObj = json.usuario || json.user || {};
+        const cleanId = userObj.idDueno || userObj.IdDueno || idDuenoInput.trim();
+        const cleanNombre = userObj.nombre || userObj.Nombre || idDuenoInput.trim();
+        const estado = userObj.estadoUsuario || userObj.EstadoUsuario || "Aprobado";
+
+        if (estado === "Pendiente") {
+          setError("ACCESO RESTRINGIDO: Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador.");
+          setLoading(false);
+          return;
         }
+        if (estado === "Rechazado") {
+          setError("ACCESO DENEGADO: Tu cuenta ha sido inhabilitada por el Administrador.");
+          setLoading(false);
+          return;
+        }
+
+        const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(cleanId)}`;
+        const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
+        const vehJson = await vehRes.json();
+        setVehiculos(vehJson.data || []);
+        setLoggedUser({
+          idDueno: cleanId,
+          nombre: cleanNombre
+        });
+        setViewMode("garage");
       } else {
-        if (!appScriptUrl) {
-          throw new Error("La URL de Google Sheets Apps Script no está configurada.");
-        }
-        const url = `${appScriptUrl}?accion=login&idDueno=${encodeURIComponent(idDuenoInput.trim())}&contrasena=${encodeURIComponent(contrasenaInput.trim())}`;
-        const res = await fetch(url, { method: "GET", mode: "cors" });
-        if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
-        const json = await res.json();
-        if (json && json.success) {
-          const userObj = json.usuario || json.user || {};
-          const cleanId = userObj.idDueno || userObj.IdDueno || idDuenoInput.trim();
-          const cleanNombre = userObj.nombre || userObj.Nombre || idDuenoInput.trim();
-          const estado = userObj.estadoUsuario || userObj.EstadoUsuario || "Aprobado";
-
-          if (estado === "Pendiente") {
-            setError("ACCESO RESTRINGIDO: Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador.");
-            setLoading(false);
-            return;
-          }
-          if (estado === "Rechazado") {
-            setError("ACCESO DENEGADO: Tu cuenta ha sido inhabilitada por el Administrador.");
-            setLoading(false);
-            return;
-          }
-
-          const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(cleanId)}`;
-          const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
-          const vehJson = await vehRes.json();
-          setVehiculos(vehJson.data || []);
-          setLoggedUser({
-            idDueno: cleanId,
-            nombre: cleanNombre
-          });
-          setViewMode("garage");
-        } else {
-          setError(json.error || "Error de autenticación.");
-        }
+        setError(json.error || "Credenciales incorrectas en Google Sheets.");
       }
     } catch (err: any) {
-      setError(err.message || "Fallo la comunicación con el servidor.");
+      setError(err.message || "Fallo la comunicación con Google Sheets.");
     } finally {
       setLoading(false);
     }
@@ -232,62 +197,33 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     const cleanNombre = nombreInput.trim();
 
     try {
-      if (useSimulado || !appScriptUrl) {
-        const res = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-        if (res.success) {
-          setSuccessMsg(res.message || "¡Registro recibido! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador.");
-          setViewMode("login");
-          setNombreInput("");
-          setContrasenaInput("");
-        } else {
-          setError((res as any).error || "Error en el registro.");
-        }
-      } else {
-        const payload = {
-          accion: "registroUsuario",
-          idDueno: cleanId,
-          nombre: cleanNombre,
-          contrasena: contrasenaInput.trim()
-        };
+      if (!appScriptUrl) {
+        throw new Error("La URL de Google Sheets Apps Script no está configurada en la barra superior.");
+      }
+      const payload = {
+        accion: "registroUsuario",
+        idDueno: cleanId,
+        nombre: cleanNombre,
+        contrasena: contrasenaInput.trim()
+      };
 
-        try {
-          const res = await fetch(appScriptUrl, {
-            method: "POST",
-            mode: "cors",
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(payload)
-          });
-          
-          if (!res.ok) throw new Error("Fallo al enviar datos.");
-          const json = await res.json();
-          if (json && json.success) {
-            notifyDataChanged();
-            setSuccessMsg("¡Registro guardado con éxito! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador antes de ingresar.");
-            setViewMode("login");
-            setNombreInput("");
-            setContrasenaInput("");
-          } else {
-            const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-            if (resLocal.success) {
-              setSuccessMsg(resLocal.message);
-              setViewMode("login");
-              setNombreInput("");
-              setContrasenaInput("");
-            } else {
-              setError((resLocal as any).error || "Error al procesar el registro.");
-            }
-          }
-        } catch (fetchErr) {
-          const resLocal = simularRegistroUsuario(cleanId, cleanNombre, contrasenaInput);
-          if (resLocal.success) {
-            setSuccessMsg(resLocal.message);
-            setViewMode("login");
-            setNombreInput("");
-            setContrasenaInput("");
-          } else {
-            setError((resLocal as any).error || "Error al registrar.");
-          }
-        }
+      const res = await fetch(appScriptUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      
+      if (!res.ok) throw new Error("Fallo al enviar datos.");
+      const json = await res.json();
+      if (json && json.success) {
+        notifyDataChanged();
+        setSuccessMsg("¡Registro guardado con éxito! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador antes de ingresar.");
+        setViewMode("login");
+        setNombreInput("");
+        setContrasenaInput("");
+      } else {
+        setError(json.error || "Error al procesar el registro en Google Sheets.");
       }
     } catch (err: any) {
       setError(err.message || "Error al conectar con la base de datos.");
@@ -304,31 +240,20 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     setActiveCertType(tipo);
 
     try {
-      if (useSimulado) {
-        const res = simularGetCertificado(veh.placa, tipo);
-        if (res.success) {
-          setSelectedCar(res.vehiculo);
-          setHistorial(normalizeHistorial(res.historial || []));
-          setViewMode("certificado");
-        } else {
-          setError(res.error || "No se pudo recuperar el certificado.");
-        }
+      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=${tipo}`;
+      const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
+      if (!response.ok) throw new Error("Error en red.");
+      const result = await response.json();
+      if (result && result.success) {
+        setSelectedCar(result.vehiculo);
+        setHistorial(normalizeHistorial(result.historial || []));
+        setViewMode("certificado");
       } else {
-        if (!appScriptUrl) throw new Error("URL de Sheets no configurada.");
-        const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=${tipo}`;
-        const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
-        if (!response.ok) throw new Error("Error en red.");
-        const result = await response.json();
-        if (result && result.success) {
-          setSelectedCar(result.vehiculo);
-          setHistorial(normalizeHistorial(result.historial || []));
-          setViewMode("certificado");
-        } else {
-          setError(result.error || "No se encontró el certificado.");
-        }
+        setError(result.error || "No se encontró el certificado en Google Sheets.");
       }
     } catch (err: any) {
-      setError(err.message || "Error al sincronizar con el Sheets.");
+      setError(err.message || "Error al sincronizar con Google Sheets.");
     } finally {
       setLoading(false);
     }
@@ -368,45 +293,31 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     };
 
     try {
-      if (useSimulado) {
-        const res = simularRegistrarVehiculo(nuevoVehiculo);
-        if (res.success) {
-          setVehiculos((prev) => [...prev, nuevoVehiculo]);
-          setMostrarFormCar(false);
-          setNewPlaca("");
-          setNewMarca("");
-          setNewModelo("");
-          setNewAnio("");
-        } else {
-          setError(res.error || "Error al registrar vehículo.");
-        }
+      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      const payload = {
+        accion: "registrarVehiculo",
+        ...nuevoVehiculo
+      };
+      const res = await fetch(appScriptUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error("Fallo en la comunicación con el servidor.");
+      const json = await res.json();
+      if (json && json.success) {
+        setVehiculos((prev) => [...prev, nuevoVehiculo]);
+        setMostrarFormCar(false);
+        setNewPlaca("");
+        setNewMarca("");
+        setNewModelo("");
+        setNewAnio("");
       } else {
-        if (!appScriptUrl) throw new Error("URL de Sheets no configurada.");
-        const payload = {
-          accion: "registrarVehiculo",
-          ...nuevoVehiculo
-        };
-        const res = await fetch(appScriptUrl, {
-          method: "POST",
-          mode: "cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) throw new Error("Fallo en la comunicación con el servidor.");
-        const json = await res.json();
-        if (json && json.success) {
-          setVehiculos((prev) => [...prev, nuevoVehiculo]);
-          setMostrarFormCar(false);
-          setNewPlaca("");
-          setNewMarca("");
-          setNewModelo("");
-          setNewAnio("");
-        } else {
-          setError(json.error || "No se pudo registrar en Google Sheets.");
-        }
+        setError(json.error || "No se pudo registrar en Google Sheets.");
       }
     } catch (err: any) {
-      setError(err.message || "Fallo la sincronización.");
+      setError(err.message || "Fallo la sincronización con Google Sheets.");
     } finally {
       setRegistrandoCar(false);
     }
@@ -446,7 +357,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
   const getPublicShareUrl = () => {
     if (!selectedCar) return "";
     const basePath = getCleanBaseAndPath();
-    let path = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
+    let path = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo`;
     if (appScriptUrl) {
       path += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
@@ -496,10 +407,10 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
   };
 
   // Obtener de forma ultra robusta el teléfono de un mecánico cruzando todas las fuentes y nombres de columna posibles
-  const getMechanicPhone = (row: any, localMecs: any[]): string => {
+  // Obtener de forma ultra robusta el teléfono de un mecánico buscando en todas las columnas posibles
+  const getMechanicPhone = (row: any): string => {
     if (!row) return "";
     
-    // 1. Intentar buscar en las columnas comunes que podrían venir desde Google Sheets (con varias ortografías, mayúsculas/minúsculas, "whatsapp", "celular", etc.)
     const keys = [
       "telefonoMecanico", "telefono", "telefono_mecanico", "telefonoMec", "telefono_mec",
       "teléfono", "Teléfono", "Telefono", "TELEFONO", "TELÉFONO", "tel", "phone",
@@ -509,26 +420,6 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     for (const key of keys) {
       if (row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
         return String(row[key]).trim();
-      }
-    }
-    
-    // 2. Si no viene en el registro directo de Sheets, buscar en los mecánicos locales usando el código de firma digital
-    const rawCode = row.codigoMecanico || row.codigo || "";
-    const cleanCode = String(rawCode).trim().toLowerCase();
-    if (cleanCode) {
-      const match = localMecs.find(
-        m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
-      );
-      if (match) {
-        // Buscar teléfono en cualquier propiedad posible del mecánico encontrado
-        for (const key of keys) {
-          if (match[key] !== undefined && match[key] !== null && String(match[key]).trim()) {
-            return String(match[key]).trim();
-          }
-        }
-        if (match.telefono) {
-          return String(match.telefono).trim();
-        }
       }
     }
     
@@ -635,27 +526,11 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
       const foundTel = getRowVal(row, telKeys);
       if (foundTel) normalized.telefonoMecanico = foundTel;
 
-      // 8. Hidratar con datos del listado local de mecánicos según el CodigoMecanico
+      // 8. Hidratar con datos de teléfono y taller si están en el registro
       if (normalized.codigoMecanico) {
-        try {
-          const localMecs = getSimulatedData().mecanicos;
-          const cleanCode = String(normalized.codigoMecanico).trim().toLowerCase();
-          const match = localMecs.find(
-            m => String(m.codigoMecanico || "").trim().toLowerCase() === cleanCode
-          );
-          if (match) {
-            if (!normalized.telefonoMecanico && match.telefono) {
-              normalized.telefonoMecanico = String(match.telefono).trim();
-            }
-            if (match.nombre) {
-              normalized.nombreMecanico = match.nombre;
-            }
-            if ((!normalized.taller || normalized.taller === "Taller Oficial" || normalized.taller === "Taller Independiente" || normalized.taller.startsWith("Taller Autorizado")) && match.taller) {
-              normalized.taller = match.taller;
-            }
-          }
-        } catch (e) {
-          console.warn("Error hidratando datos del mecánico:", e);
+        if (!normalized.telefonoMecanico) {
+          const tel = getMechanicPhone(row);
+          if (tel) normalized.telefonoMecanico = tel;
         }
       }
 
@@ -691,16 +566,14 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
     
     // Obtener lista única de mecánicos/talleres del historial
     const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
-    const localMecanicos = getSimulatedData().mecanicos;
 
     historial.forEach((row) => {
       const cod = row.codigoMecanico || "";
       if (cod && !uniqueMecsMap[cod]) {
-        const tel = getMechanicPhone(row, localMecanicos);
-        const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
+        const tel = getMechanicPhone(row);
         uniqueMecsMap[cod] = {
-          taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundM ? foundM.taller : "Taller Autorizado"),
-          nombre: row.nombreMecanico || (foundM ? foundM.nombre : (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado")),
+          taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado",
+          nombre: row.nombreMecanico || (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado"),
           telefono: tel ? String(tel) : "",
           codigo: cod
         };
@@ -738,8 +611,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
   const generateQRCodeUrl = () => {
     if (!selectedCar) return "";
     const basePath = getCleanBaseAndPath();
-    let publicLink = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo&simulado=${useSimulado}`;
-    if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
+    let publicLink = `${basePath}?placa=${selectedCar.placa}&tipoCertificado=completo`;
+    if (!usarQrUltraligero && appScriptUrl) {
       publicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
     return `https://api.qrserver.com/v1/create-qr-code/?size=600x600&color=000000&ecc=H&data=${encodeURIComponent(publicLink)}`;
@@ -749,8 +622,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
   const generateMecanicoQRCodeUrl = () => {
     if (!selectedCar) return "";
     const basePath = getCleanBaseAndPath();
-    let mechanicLink = `${basePath}?vista=mecanico&placa=${selectedCar.placa}&simulado=${useSimulado}`;
-    if ((!usarQrUltraligero || !useSimulado) && appScriptUrl) {
+    let mechanicLink = `${basePath}?vista=mecanico&placa=${selectedCar.placa}`;
+    if (!usarQrUltraligero && appScriptUrl) {
       mechanicLink += `&api=${encodeURIComponent(appScriptUrl)}`;
     }
     return `https://api.qrserver.com/v1/create-qr-code/?size=600x600&color=000000&ecc=H&data=${encodeURIComponent(mechanicLink)}`;
@@ -1214,11 +1087,8 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
                         const tel = row.telefonoMecanico || "";
                         const formattedTel = formatWhatsAppNumber(tel);
                         
-                        const localMecanicos = getSimulatedData().mecanicos;
-                        const cleanCode = (row.codigoMecanico || "").trim().toLowerCase();
-                        const foundMec = localMecanicos.find(m => (m.codigoMecanico || "").trim().toLowerCase() === cleanCode);
-                        const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundMec ? foundMec.taller : "Taller Autorizado AutoScore");
-                        const nombreMec = (foundMec && foundMec.nombre) ? foundMec.nombre : (row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (foundMec ? foundMec.nombre : (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado")));
+                        const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
+                        const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
                         const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
 
                         // Mensaje personalizado de corroboración para compradores interesados
@@ -1347,16 +1217,14 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
                         <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                           {(() => {
                             const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
-                            const localMecanicos = getSimulatedData().mecanicos;
 
                             historial.forEach((row) => {
                               const cod = row.codigoMecanico || "";
                               if (cod && !uniqueMecsMap[cod]) {
-                                const tel = getMechanicPhone(row, localMecanicos);
-                                const foundM = localMecanicos.find(m => m.codigoMecanico === cod);
+                                const tel = getMechanicPhone(row);
                                 uniqueMecsMap[cod] = {
-                                  taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : (foundM ? foundM.taller : "Taller Autorizado"),
-                                  nombre: row.nombreMecanico || (foundM ? foundM.nombre : (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado")),
+                                  taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado",
+                                  nombre: row.nombreMecanico || (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado"),
                                   telefono: tel ? String(tel) : "",
                                   codigo: cod
                                 };

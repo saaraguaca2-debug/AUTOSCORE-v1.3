@@ -6,14 +6,13 @@ import {
   ClipboardCheck, Wrench, User
 } from "lucide-react";
 import { Mecanico, Vehiculo } from "../types";
-import { getSimulatedData, simularPostMantenimiento, simularRegistrarVehiculo, saveSimulatedData } from "../mockData";
+import { notifyDataChanged } from "../mockData";
 
 interface MecanicoViewProps {
-  useSimulado: boolean;
   appScriptUrl: string;
 }
 
-export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoViewProps) {
+export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   // Estados de Login del Mecánico
   const [codigoMecanico, setCodigoMecanico] = useState("");
   const [loggedMecanico, setLoggedMecanico] = useState<Mecanico | null>(null);
@@ -54,20 +53,9 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
   const [showScanner, setShowScanner] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [scanMethod, setScanMethod] = useState<"camera" | "simulator">("simulator");
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  // Lista de carros existentes (para el simulador de escáner QR rápido)
-  const [carrosExistentes, setCarrosExistentes] = useState<Vehiculo[]>([]);
-
-  useEffect(() => {
-    if (showScanner && scanMethod === "simulator") {
-      const data = getSimulatedData();
-      setCarrosExistentes(data.vehiculos);
-    }
-  }, [showScanner, scanMethod]);
 
   // Pre-llenar la placa automáticamente si se pasa por parámetro URL (QR de Técnico) o desde el último carro del garage
   useEffect(() => {
@@ -93,37 +81,17 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
       const cleanInput = codigoMecanico.trim().toLowerCase();
       let foundMec: any = null;
 
-      if (useSimulado) {
-        // Validación con base de datos simulada
-        const data = getSimulatedData();
-        foundMec = data.mecanicos.find(
-          (m) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
-        );
-      } else {
-        // En producción real conectada a Google Sheets, consultamos la pestaña Mecanicos vía Apps Script
-        if (appScriptUrl) {
-          try {
-            const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
-            if (res.ok) {
-              const json = await res.json();
-              if (json && json.success && Array.isArray(json.mecanicos)) {
-                foundMec = json.mecanicos.find(
-                  (m: any) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
-                );
-              }
-            }
-          } catch (netErr) {
-            console.warn("No se pudo conectar a Google Sheets para verificar mecánico, consultando base local", netErr);
-          }
-        }
+      if (!appScriptUrl) {
+        throw new Error("Debe configurar la URL del Google Apps Script en la barra superior para validar técnicos autorizados.");
+      }
 
-        // Si no se encontró en Google Sheets, buscar en simulado local como fallback
-        if (!foundMec) {
-          const data = getSimulatedData();
-          foundMec = data.mecanicos.find(
-            (m) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
-          );
-        }
+      const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
+      if (!res.ok) throw new Error("Fallo en la comunicación con Google Sheets.");
+      const json = await res.json();
+      if (json && json.success && Array.isArray(json.mecanicos)) {
+        foundMec = json.mecanicos.find(
+          (m: any) => (m.codigoMecanico || "").toString().trim().toLowerCase() === cleanInput
+        );
       }
 
       if (foundMec) {
@@ -133,27 +101,14 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
           );
         } else {
           setLoggedMecanico(foundMec);
+          setLoginError(null);
         }
       } else {
-        // Si no está registrado previamente, se da de alta con su código y denominación autorizada
-        const cleanCode = codigoMecanico.trim().toUpperCase();
-        const newMec = {
-          codigoMecanico: cleanCode,
-          nombre: `Técnico Homologado #${cleanCode}`,
-          taller: `Taller Autorizado #${cleanCode}`,
-          estado: "Activo" as const,
-          telefono: "584120000000"
-        };
-        const data = getSimulatedData();
-        if (!data.mecanicos.some(m => m.codigoMecanico.toUpperCase() === cleanCode)) {
-          data.mecanicos.push(newMec);
-          saveSimulatedData(data);
-        }
-        setLoggedMecanico(newMec);
+        setLoginError("Código de técnico no encontrado en la base de datos de Google Sheets.");
       }
-      setLoadingLogin(false);
     } catch (err: any) {
-      setLoginError("Fallo en la autenticación del técnico: " + (err.message || "Error desconocido"));
+      setLoginError(err.message || "Error al verificar código en Google Sheets.");
+    } finally {
       setLoadingLogin(false);
     }
   };
@@ -186,7 +141,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
       }
     } catch (err: any) {
       setCameraError(
-        "No se pudo acceder a la cámara. Por favor concede permisos de video en tu navegador o usa el simulador rápido."
+        "No se pudo acceder a la cámara. Por favor concede permisos de video en tu navegador."
       );
       setCameraActive(false);
     }
@@ -200,23 +155,22 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     setCameraActive(false);
   };
 
-  // Al abrir el escáner, arrancar cámara si es método físico
-  useEffect(() => {
-    if (showScanner && scanMethod === "camera") {
-      startCamera();
-    } else {
-      stopCamera();
-    }
-    return () => stopCamera();
-  }, [showScanner, scanMethod]);
-
-  // Manejar captura de cámara simulada / real
-  const handleSimularScan = (placaSeleccionada: string) => {
+  // Manejar captura de cámara real
+  const handleSelectPlaca = (placaSeleccionada: string) => {
     setPlaca(placaSeleccionada.toUpperCase());
     setShowScanner(false);
     stopCamera();
     setFormError(null);
   };
+
+  // Auto-iniciar cámara al abrir el lector de QR
+  useEffect(() => {
+    if (showScanner) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+  }, [showScanner]);
 
   // Bucle de escaneo de QR en tiempo real usando jsQR
   useEffect(() => {
@@ -224,7 +178,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     let animationFrameId: number;
 
     const scan = () => {
-      if (!active || !cameraActive || scanMethod !== "camera") return;
+      if (!active || !cameraActive) return;
 
       const video = videoRef.current;
       if (video && video.readyState === video.HAVE_ENOUGH_DATA) {
@@ -267,7 +221,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
               }
 
               if (detectedPlaca) {
-                handleSimularScan(detectedPlaca.toUpperCase());
+                handleSelectPlaca(detectedPlaca.toUpperCase());
                 active = false;
                 return;
               }
@@ -283,7 +237,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
       }
     };
 
-    if (cameraActive && scanMethod === "camera") {
+    if (cameraActive) {
       animationFrameId = requestAnimationFrame(scan);
     }
 
@@ -293,25 +247,7 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [cameraActive, scanMethod]);
-
-  // Simulación de escaneo visual con cámara / Captura rápida
-  const triggerCameraScanResult = () => {
-    // Si están usando la cámara, simulamos leer un código exitosamente tras un parpadeo de luces
-    if (cameraActive) {
-      const params = new URLSearchParams(window.location.search);
-      const urlPlaca = params.get("placa");
-      const lastSelected = localStorage.getItem("autoscore_last_selected_placa");
-      const data = getSimulatedData();
-      
-      const placaElegida = urlPlaca || lastSelected || placa || (data.vehiculos.length > 0 ? data.vehiculos[0].placa : "XYZ567");
-      
-      // Animación de escaneo
-      setTimeout(() => {
-        handleSimularScan(placaElegida);
-      }, 1000);
-    }
-  };
+  }, [cameraActive]);
 
   // 3. ENVÍO DE FORMULARIO: REGISTRAR Y FIRMAR MANTENIMIENTO (POST)
   const handleRegistrarMantenimiento = async (e: React.FormEvent) => {
@@ -346,90 +282,43 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
     };
 
     try {
-      if (useSimulado) {
-        // Enviar al motor local simulado
-        setTimeout(() => {
-          const res = simularPostMantenimiento(payload);
-          if (res.success) {
-            setFormSuccess(res.data);
-            // Limpiar formulario excepto placa (por comodidad)
-            setKilometraje("");
-            setTrabajo("");
-          } else {
-            setFormError(res.error || "Ocurrió un error en el registro simulado.");
-          }
-          setIsSubmitting(false);
-        }, 1200);
-      } else {
-        // Enviar mediante POST real a la URL de Google Apps Script
-        if (!appScriptUrl) {
-          // Si no hay URL configurada, guardar localmente para asegurar el registro
-          const resLocal = simularPostMantenimiento(payload);
-          if (resLocal.success) {
-            setFormSuccess(resLocal.data);
-            setKilometraje("");
-            setTrabajo("");
-          } else {
-            setFormError(resLocal.error || "Ocurrió un error al registrar la firma.");
-          }
-          setIsSubmitting(false);
-          return;
-        }
-
-        try {
-          // Petición real vía fetch configurada con CORS simple
-          const response = await fetch(appScriptUrl, {
-            method: "POST",
-            mode: "cors",
-            headers: {
-              "Content-Type": "text/plain;charset=utf-8"
-            },
-            body: JSON.stringify(payload)
-          });
-
-          if (!response.ok) {
-            throw new Error(`Error HTTP: ${response.status}`);
-          }
-
-          const result = await response.json();
-          if (result && result.success) {
-            setFormSuccess(result.data || {
-              placa: cleanPlaca,
-              fecha: new Date().toLocaleDateString(),
-              mecanico: loggedMecanico.nombre,
-              taller: loggedMecanico.taller
-            });
-            setKilometraje("");
-            setTrabajo("");
-          } else {
-            // Si el servidor Sheets devuelve error o no reconoce el código, registrar localmente para no romper la firma
-            const resLocal = simularPostMantenimiento(payload);
-            if (resLocal.success) {
-              setFormSuccess(resLocal.data);
-              setKilometraje("");
-              setTrabajo("");
-            } else {
-              setFormError((result && result.error) || "El servidor rechazó la firma de mantenimiento.");
-            }
-          }
-        } catch (fetchErr: any) {
-          // En caso de falla de red o CORS con Sheets, registrar localmente
-          const resLocal = simularPostMantenimiento(payload);
-          if (resLocal.success) {
-            setFormSuccess({
-              ...resLocal.data,
-              nota: "Firma registrada exitosamente en el sistema."
-            });
-            setKilometraje("");
-            setTrabajo("");
-          } else {
-            setFormError("Fallo de conexión al enviar la firma: " + fetchErr.message);
-          }
-        }
+      if (!appScriptUrl) {
+        setFormError("Debe configurar la URL del Google Apps Script en la barra superior para registrar mantenimientos.");
         setIsSubmitting(false);
+        return;
+      }
+
+      // Petición real vía fetch configurada con CORS simple
+      const response = await fetch(appScriptUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error de comunicación con Google Sheets: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      if (result && result.success) {
+        setFormSuccess(result.data || {
+          placa: cleanPlaca,
+          fecha: new Date().toLocaleDateString(),
+          mecanico: loggedMecanico.nombre,
+          taller: loggedMecanico.taller
+        });
+        setKilometraje("");
+        setTrabajo("");
+        notifyDataChanged();
+      } else {
+        setFormError((result && result.error) || "Google Sheets rechazó la firma de mantenimiento.");
       }
     } catch (err: any) {
-      setFormError(err.message || "Fallo inesperado al registrar la firma.");
+      setFormError(err.message || "Fallo inesperado al registrar la firma en Google Sheets.");
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -622,10 +511,9 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                     <button
                       type="button"
                       onClick={() => {
-                        setScanMethod("simulator");
                         setShowScanner(true);
                       }}
-                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-md"
+                      className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors shadow-md cursor-pointer"
                       title="Escanear QR de Placa"
                       id="btn-scan-trigger"
                     >
@@ -773,131 +661,76 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
                 const trabajoInspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nINSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
 
                 try {
-                  if (useSimulado) {
-                    setTimeout(() => {
-                      const nuevoCarro: Vehiculo = {
-                        placa: cleanPlaca,
-                        marca: cleanMarca,
-                        modelo: cleanModelo,
-                        anio: anioNum,
-                        idDueno: cleanIdDueno,
-                        score: scoreCalculado,
-                        estadoCertificado: "Activo"
-                      };
+                  if (!appScriptUrl) {
+                    throw new Error("Debe configurar la URL del Google Apps Script en el botón de arriba ⚙️.");
+                  }
 
-                      const resReg = simularRegistrarVehiculo(nuevoCarro);
-                      if (!resReg.success) {
-                        setInspError(resReg.error || "La placa ya existe registrada en el sistema.");
-                        setIsSubmittingInsp(false);
-                        return;
-                      }
-
-                      const resMaint = simularPostMantenimiento({
-                        codigoMecanico: loggedMecanico.codigoMecanico,
-                        placa: cleanPlaca,
-                        kilometraje: kmNum,
-                        trabajo: trabajoInspeccion
-                      });
-
-                      const data = getSimulatedData();
-                      const vIdx = data.vehiculos.findIndex(v => v.placa === cleanPlaca);
-                      if (vIdx !== -1) {
-                        data.vehiculos[vIdx].score = scoreCalculado;
-                        saveSimulatedData(data);
-                      }
-
-                      setInspSuccess({
-                        placa: cleanPlaca,
-                        marca: cleanMarca,
-                        modelo: cleanModelo,
-                        score: scoreCalculado,
-                        dueno: cleanIdDueno,
-                        idHistorial: resMaint.success ? resMaint.data.idHistorial : "10005"
-                      });
-
-                      setInspPlaca("");
-                      setInspMarca("");
-                      setInspModelo("");
-                      setInspAnio("");
-                      setInspIdDueno("");
-                      setInspKilometraje("");
-                      setQMotor(20);
-                      setQChasis(20);
-                      setQDireccion(20);
-                      setQOBD(20);
-                      setQNeumaticos(20);
-                      setIsSubmittingInsp(false);
-                    }, 1200);
-                  } else {
-                    if (!appScriptUrl) {
-                      throw new Error("Debe configurar la URL del Google Apps Script en el botón de arriba ⚙️.");
-                    }
-
-                    const responseReg = await fetch(appScriptUrl, {
-                      method: "POST",
-                      mode: "cors",
-                      headers: { "Content-Type": "text/plain;charset=utf-8" },
-                      body: JSON.stringify({
-                        accion: "registrarVehiculo",
-                        placa: cleanPlaca,
-                        marca: cleanMarca,
-                        modelo: cleanModelo,
-                        anio: anioNum,
-                        idDueno: cleanIdDueno,
-                        score: scoreCalculado,
-                        estadoCertificado: "Activo"
-                      })
-                    });
-
-                    if (!responseReg.ok) {
-                      throw new Error(`Fallo en conexión al registrar vehículo: ${responseReg.statusText}`);
-                    }
-
-                    const resultReg = await responseReg.json();
-                    if (!resultReg || !resultReg.success) {
-                      throw new Error(resultReg?.error || "Error al registrar vehículo en Google Sheets.");
-                    }
-
-                    const responseMaint = await fetch(appScriptUrl, {
-                      method: "POST",
-                      mode: "cors",
-                      headers: { "Content-Type": "text/plain;charset=utf-8" },
-                      body: JSON.stringify({
-                        codigoMecanico: loggedMecanico.codigoMecanico,
-                        placa: cleanPlaca,
-                        kilometraje: kmNum,
-                        trabajo: trabajoInspeccion
-                      })
-                    });
-
-                    if (!responseMaint.ok) {
-                      throw new Error(`Fallo al registrar diagnóstico de ingreso: ${responseMaint.statusText}`);
-                    }
-
-                    const resultMaint = await responseMaint.json();
-
-                    setInspSuccess({
+                  const responseReg = await fetch(appScriptUrl, {
+                    method: "POST",
+                    mode: "cors",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                      accion: "registrarVehiculo",
                       placa: cleanPlaca,
                       marca: cleanMarca,
                       modelo: cleanModelo,
+                      anio: anioNum,
+                      idDueno: cleanIdDueno,
                       score: scoreCalculado,
-                      dueno: cleanIdDueno,
-                      idHistorial: resultMaint.success ? (resultMaint.data?.idHistorial || "10005") : "10005"
-                    });
+                      estadoCertificado: "Activo"
+                    })
+                  });
 
-                    setInspPlaca("");
-                    setInspMarca("");
-                    setInspModelo("");
-                    setInspAnio("");
-                    setInspIdDueno("");
-                    setInspKilometraje("");
-                    setQMotor(20);
-                    setQChasis(20);
-                    setQDireccion(20);
-                    setQOBD(20);
-                    setQNeumaticos(20);
-                    setIsSubmittingInsp(false);
+                  if (!responseReg.ok) {
+                    throw new Error(`Fallo en conexión al registrar vehículo: ${responseReg.statusText}`);
                   }
+
+                  const resultReg = await responseReg.json();
+                  if (!resultReg || !resultReg.success) {
+                    throw new Error(resultReg?.error || "Error al registrar vehículo en Google Sheets.");
+                  }
+
+                  const responseMaint = await fetch(appScriptUrl, {
+                    method: "POST",
+                    mode: "cors",
+                    headers: { "Content-Type": "text/plain;charset=utf-8" },
+                    body: JSON.stringify({
+                      codigoMecanico: loggedMecanico.codigoMecanico,
+                      placa: cleanPlaca,
+                      kilometraje: kmNum,
+                      trabajo: trabajoInspeccion
+                    })
+                  });
+
+                  if (!responseMaint.ok) {
+                    throw new Error(`Fallo al registrar diagnóstico de ingreso: ${responseMaint.statusText}`);
+                  }
+
+                  const resultMaint = await responseMaint.json();
+
+                  setInspSuccess({
+                    placa: cleanPlaca,
+                    marca: cleanMarca,
+                    modelo: cleanModelo,
+                    score: scoreCalculado,
+                    dueno: cleanIdDueno,
+                    idHistorial: resultMaint.success ? (resultMaint.data?.idHistorial || "10005") : "10005"
+                  });
+
+                  notifyDataChanged();
+
+                  setInspPlaca("");
+                  setInspMarca("");
+                  setInspModelo("");
+                  setInspAnio("");
+                  setInspIdDueno("");
+                  setInspKilometraje("");
+                  setQMotor(20);
+                  setQChasis(20);
+                  setQDireccion(20);
+                  setQOBD(20);
+                  setQNeumaticos(20);
+                  setIsSubmittingInsp(false);
                 } catch (err: any) {
                   setInspError(err.message || "Fallo en la conexión del servidor al registrar la inspección.");
                   setIsSubmittingInsp(false);
@@ -1156,164 +989,80 @@ export default function MecanicoView({ useSimulado, appScriptUrl }: MecanicoView
               </button>
             </div>
 
-            {/* Selector de Método de Escaneo */}
-            <div className="flex bg-black/40 rounded-lg p-1 mb-4 border border-white/5">
-              <button
-                onClick={() => setScanMethod("simulator")}
-                className={`flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors ${
-                  scanMethod === "simulator"
-                    ? "bg-amber-500 text-slate-950 font-bold"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Escanear QR (Simulado Rápido)
-              </button>
-              <button
-                onClick={() => setScanMethod("camera")}
-                className={`flex-1 py-1.5 text-[11px] font-medium rounded-md transition-colors flex items-center justify-center gap-1 ${
-                  scanMethod === "camera"
-                    ? "bg-amber-500 text-slate-950 font-bold"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Cámara Live
-              </button>
-            </div>
-
-            {/* MÉTODO 1: SIMULADOR DE ESCANEO RÁPIDO */}
-            {scanMethod === "simulator" && (
-              <div className="space-y-3">
-                <p className="text-[11px] text-slate-400 leading-relaxed text-center mb-1">
-                  Haz clic en cualquiera de las siguientes placas detectadas por infrarrojo o QR para rellenar automáticamente el campo del vehículo:
+            {/* Visor de Cámara Real para Detección de Placa */}
+            <div className="space-y-3">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left space-y-1">
+                <div className="flex items-center gap-1.5 text-amber-400">
+                  <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-bold font-display uppercase tracking-wider">Escáner Automático QR</span>
+                </div>
+                <p className="text-[9px] text-slate-300 leading-normal">
+                  Apunta la cámara al código QR generado por el dueño del vehículo para cargar la placa de forma automática.
                 </p>
+              </div>
 
-                {/* Atajo de placa seleccionada en el Garage */}
-                {typeof window !== "undefined" && localStorage.getItem("autoscore_last_selected_placa") && (
-                  <div className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-xl text-center mb-1 animate-pulse">
-                    <span className="block text-[9px] text-amber-400 uppercase font-bold tracking-wider mb-1">
-                      🚘 VEHÍCULO DETECTADO EN GARAGE
+              {cameraError ? (
+                <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-xl text-[11px] text-red-400 text-center leading-relaxed">
+                  <AlertTriangle className="w-5 h-5 mx-auto mb-1 text-red-500" />
+                  <span>{cameraError}</span>
+                  <p className="text-[10px] text-slate-400 mt-2">Puedes cerrar esta ventana e ingresar la placa directamente en la casilla del formulario.</p>
+                </div>
+              ) : (
+                <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border border-slate-800">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover"
+                  />
+
+                  {/* HUD Overlay / Grid de Escaneo */}
+                  <div className="absolute inset-0 border-[28px] border-slate-950/70 flex items-center justify-center pointer-events-none">
+                    <div className="w-full h-full border-2 border-amber-500 relative">
+                      <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-amber-400" />
+                      <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-amber-400" />
+                      <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-amber-400" />
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-amber-400" />
+                      <div className="absolute left-0 right-0 h-[1.5px] bg-amber-400/80 shadow-sm shadow-amber-400 animate-pulse" style={{ top: '50%' }} />
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-3 left-0 right-0 text-center pointer-events-none">
+                    <span className="bg-slate-950/80 px-2.5 py-1 rounded-full text-[9px] font-mono tracking-wider text-amber-400 uppercase font-semibold">
+                      Apunta al QR vehicular
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleSimularScan(localStorage.getItem("autoscore_last_selected_placa") || "")}
-                      className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-1.5 px-3 rounded-lg text-xs font-mono tracking-widest transition-all active:scale-[0.98]"
-                    >
-                      {localStorage.getItem("autoscore_last_selected_placa")?.toUpperCase()} (CONFIRMAR ESCANEO)
-                    </button>
                   </div>
-                )}
-
-                <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                  {carrosExistentes.length === 0 ? (
-                    <div className="text-center py-4 text-xs text-slate-500 font-mono">
-                      Cargando placas del sistema...
-                    </div>
-                  ) : (
-                    carrosExistentes.map((c) => (
-                      <button
-                        key={c.placa}
-                        onClick={() => handleSimularScan(c.placa)}
-                        className="w-full bg-white/5 hover:bg-white/10 border border-white/5 hover:border-amber-500/40 rounded-xl p-3 flex justify-between items-center text-xs text-left transition-all"
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-amber-400 tracking-wider text-sm block">
-                            {c.placa}
-                          </span>
-                          <span className="text-[10px] text-slate-400">
-                            {c.marca} {c.modelo}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-right font-mono text-[10px]">
-                          <span className="text-slate-500">Score: {c.score}</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-amber-500" />
-                        </div>
-                      </button>
-                    ))
-                  )}
                 </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cameraActive) {
+                      stopCamera();
+                    } else {
+                      startCamera();
+                    }
+                  }}
+                  className="flex-1 bg-slate-900 border border-white/10 hover:border-amber-500/40 text-slate-200 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${cameraActive ? "animate-spin" : ""}`} />
+                  <span>{cameraActive ? "Reiniciar Sensor" : "Encender Cámara"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowScanner(false);
+                    stopCamera();
+                  }}
+                  className="px-4 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                >
+                  Cerrar
+                </button>
               </div>
-            )}
-
-            {/* MÉTODO 2: ESCÁNER CON VIDEO DE CÁMARA REAL */}
-            {scanMethod === "camera" && (
-              <div className="space-y-3">
-                {/* Nota educativa de integración */}
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left space-y-1">
-                  <div className="flex items-center gap-1.5 text-amber-400">
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-[10px] font-bold font-display uppercase tracking-wider">Lectura Precisa QR</span>
-                  </div>
-                  <p className="text-[9px] text-slate-300 leading-normal">
-                    Para vincular el taller, <strong>escanea el código QR de la pantalla del dueño usando la cámara de tu celular</strong>. Esto abrirá automáticamente el panel del taller con todos los datos y la placa listos para firmar.
-                  </p>
-                </div>
-
-                {cameraError ? (
-                  <div className="p-3 bg-red-950/30 border border-red-900/40 rounded-xl text-[11px] text-red-400 text-center leading-relaxed">
-                    <AlertTriangle className="w-5 h-5 mx-auto mb-1 text-red-500" />
-                    <span>{cameraError}</span>
-                  </div>
-                ) : (
-                  <div className="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border border-slate-800">
-                    
-                    {/* Elemento de Video */}
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover"
-                    />
-
-                    {/* HUD Overlay / Grid de Escaneo */}
-                    <div className="absolute inset-0 border-[28px] border-slate-950/70 flex items-center justify-center pointer-events-none">
-                      <div className="w-full h-full border-2 border-amber-500 relative">
-                        {/* Esquinas del HUD */}
-                        <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-amber-400" />
-                        <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-amber-400" />
-                        <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-amber-400" />
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-amber-400" />
-
-                        {/* Línea Láser Animada */}
-                        <div className="absolute left-0 right-0 h-[1.5px] bg-amber-400/80 shadow-sm shadow-amber-400 animate-pulse" style={{ top: '50%' }} />
-                      </div>
-                    </div>
-
-                    <div className="absolute bottom-3 left-0 right-0 text-center pointer-events-none">
-                      <span className="bg-slate-950/80 px-2.5 py-1 rounded-full text-[9px] font-mono tracking-wider text-amber-400 uppercase font-semibold">
-                        Apunta al QR vehicular
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={triggerCameraScanResult}
-                    disabled={!cameraActive}
-                    className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-1"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    Capturar QR de Placa
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (cameraActive) {
-                        stopCamera();
-                      } else {
-                        startCamera();
-                      }
-                    }}
-                    className="p-2 bg-slate-950 border border-slate-800 rounded-xl text-slate-400 hover:text-white"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${cameraActive ? "animate-spin" : ""}`} />
-                  </button>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       )}

@@ -1,16 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Database, Wifi, WifiOff, Settings, Check, HelpCircle } from "lucide-react";
+import { Wifi, WifiOff, Settings, Check, HelpCircle } from "lucide-react";
 
 interface BaseDatosToggleProps {
-  useSimulado: boolean;
-  setUseSimulado: (val: boolean) => void;
   appScriptUrl: string;
   setAppScriptUrl: (url: string) => void;
 }
 
 export default function BaseDatosToggle({
-  useSimulado,
-  setUseSimulado,
   appScriptUrl,
   setAppScriptUrl,
 }: BaseDatosToggleProps) {
@@ -24,7 +20,7 @@ export default function BaseDatosToggle({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    setAppScriptUrl(inputUrl);
+    setAppScriptUrl(inputUrl.trim());
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 3000);
   };
@@ -36,52 +32,39 @@ export default function BaseDatosToggle({
         <div className="flex items-center gap-2">
           <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
           <span className="font-display font-bold text-sm tracking-wider text-slate-200">
-            AUTOSCORE <span className="text-amber-500 text-xs font-mono font-normal">v1.3</span>
+            AUTOSCORE <span className="text-amber-500 text-xs font-mono font-normal">PRO</span>
           </span>
         </div>
 
-        {/* Controles de conexión */}
-        <div className="flex items-center gap-3 self-end sm:self-auto">
-          <div className="flex items-center bg-white/5 rounded-full p-1 border border-white/10 backdrop-blur-sm">
-            <button
-              onClick={() => setUseSimulado(true)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
-                useSimulado
-                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/30 font-bold"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-              id="btn-simulado"
-            >
-              <Database className="w-3.5 h-3.5" />
-              Simulador
-            </button>
-            <button
-              onClick={() => {
-                setUseSimulado(false);
-                if (!appScriptUrl) {
-                  setShowSettings(true);
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-300 ${
-                !useSimulado
-                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-              id="btn-live"
-            >
-              {appScriptUrl ? (
+        {/* Estado de conexión a Google Sheets */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-sm transition-all cursor-pointer ${
+              appScriptUrl
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/15"
+                : "bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/15"
+            }`}
+            id="btn-connection-status"
+            title="Estado de conexión con Google Sheets"
+          >
+            {appScriptUrl ? (
+              <>
                 <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <WifiOff className="w-3.5 h-3.5 text-slate-500" />
-              )}
-              Sheets Live
-            </button>
-          </div>
+                <span className="font-bold">Google Sheets Activo</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                <span className="font-bold">Google Sheets Sin Configurar</span>
+              </>
+            )}
+          </button>
 
           {/* Botón de configuración */}
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className={`p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 transition-colors ${
+            className={`p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-slate-200 hover:bg-white/10 transition-colors cursor-pointer ${
               showSettings ? "text-amber-400 border-amber-500/30 bg-amber-500/5" : ""
             }`}
             title="Configurar URL del Google Apps Script"
@@ -94,13 +77,13 @@ export default function BaseDatosToggle({
 
       {/* Panel Desplegable de Configuración de la API */}
       {showSettings && (
-        <div className="max-w-4xl mx-auto mt-3 p-4 bg-slate-900/80 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl animate-in fade-in slide-in-from-top-3 duration-300">
+        <div className="max-w-4xl mx-auto mt-3 p-4 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl animate-in fade-in slide-in-from-top-3 duration-300">
           <h3 className="text-sm font-display font-semibold text-slate-200 mb-1 flex items-center gap-2">
             <Settings className="w-4 h-4 text-amber-500" />
-            Configuración de Google Apps Script (Producción)
+            Configuración de Google Apps Script (Base de Datos Real)
           </h3>
           <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-            Para conectar esta interfaz web a tu propia base de datos en Google Sheets, pega aquí la URL generada al publicar tu Apps Script como Aplicación Web (con acceso configurado para "Cualquier persona").
+            Pega aquí la URL Web App de tu Google Apps Script publicada con acceso para &quot;Cualquier persona&quot; para sincronizar propietarios, vehículos y mantenimientos en tu Google Sheet oficial.
           </p>
 
           <form onSubmit={handleSave} className="flex flex-col gap-2">
@@ -115,7 +98,7 @@ export default function BaseDatosToggle({
               />
               <button
                 type="submit"
-                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition-colors flex items-center gap-1 shrink-0"
+                className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
                 id="btn-save-settings"
               >
                 {saveSuccess ? <Check className="w-3.5 h-3.5" /> : null}
@@ -125,7 +108,7 @@ export default function BaseDatosToggle({
             <div className="flex items-center gap-1.5 text-[11px] text-slate-500 mt-1">
               <HelpCircle className="w-3.5 h-3.5 text-slate-600 shrink-0" />
               <span>
-                ¿No tienes tu URL lista? Usa el <strong>Modo Simulador Local</strong> para experimentar el 100% de la lógica sin configuraciones.
+                Todas las operaciones se registrarán de forma segura directamente en tu hoja de cálculo oficial de Google Sheets.
               </span>
             </div>
           </form>
@@ -139,9 +122,8 @@ export default function BaseDatosToggle({
                 onClick={() => {
                   setAppScriptUrl("");
                   setInputUrl("");
-                  setUseSimulado(true);
                 }}
-                className="text-[10px] text-red-400 hover:text-red-300 font-medium underline px-1.5 py-0.5 rounded transition-colors"
+                className="text-[10px] text-red-400 hover:text-red-300 font-medium underline px-1.5 py-0.5 rounded transition-colors cursor-pointer"
               >
                 Desconectar
               </button>

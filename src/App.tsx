@@ -8,7 +8,6 @@ import {
   Shield, Car, PenTool, BookOpen, ChevronRight, Home, Info, HelpCircle, AlertCircle, Sparkles, Check, Lock
 } from "lucide-react";
 import { VistaActual } from "./types";
-import { inicializarBaseDatosSimulada, getSolicitudesPendientesCount } from "./mockData";
 import BaseDatosToggle from "./components/BaseDatosToggle";
 import InicioView from "./components/InicioView";
 import UsuarioView from "./components/UsuarioView";
@@ -26,9 +25,18 @@ function safeDecodeURIComponent(str: string): string {
 }
 
 export default function App() {
-  // Inicializar base de datos de simulación al montar la aplicación
+  // Limpiar residuos de simulación antigua en almacenamiento local
   useEffect(() => {
-    inicializarBaseDatosSimulada();
+    try {
+      localStorage.removeItem("autoscore_use_simulado");
+      localStorage.removeItem("autoscore_usuarios");
+      localStorage.removeItem("autoscore_mecanicos");
+      localStorage.removeItem("autoscore_vehiculos");
+      localStorage.removeItem("autoscore_historial");
+      localStorage.removeItem("autoscore_inicializado");
+    } catch (e) {
+      // Ignorar en entornos restrictivos
+    }
   }, []);
 
   // Detectar URL predeterminada del Apps Script desde variables de entorno
@@ -38,21 +46,10 @@ export default function App() {
     ""
   );
 
-  // Estados globales de conexión y persistencia
-  const [useSimulado, setUseSimulado] = useState<boolean>(() => {
-    const saved = localStorage.getItem("autoscore_use_simulado");
-    return saved ? saved === "true" : true; // Por defecto usar simulador para evitar bloqueos iniciales
-  });
-
   const [appScriptUrl, setAppScriptUrl] = useState<string>(() => {
     const saved = localStorage.getItem("autoscore_appscript_url");
     return saved || defaultUrl;
   });
-
-  // Guardar configuraciones en localStorage para persistencia
-  useEffect(() => {
-    localStorage.setItem("autoscore_use_simulado", String(useSimulado));
-  }, [useSimulado]);
 
   useEffect(() => {
     localStorage.setItem("autoscore_appscript_url", appScriptUrl);
@@ -63,58 +60,42 @@ export default function App() {
   const [usuarioInitialMode, setUsuarioInitialMode] = useState<"login" | "registro">("login");
 
   // Contador en tiempo real de solicitudes de usuario pendientes de aprobación para notificar al Admin
-  const [solicitudesCount, setSolicitudesCount] = useState<number>(() => {
-    return useSimulado ? getSolicitudesPendientesCount() : 0;
-  });
+  const [solicitudesCount, setSolicitudesCount] = useState<number>(0);
 
   useEffect(() => {
     const sincronizarSolicitudes = () => {
-      if (useSimulado) {
-        const count = getSolicitudesPendientesCount();
-        setSolicitudesCount(count);
-      } else {
-        // En modo Live Sheets solo consultar la nube y no el almacenamiento local simulado
-        if (appScriptUrl) {
-          fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
-            .then(res => res.json())
-            .then(data => {
-              if (data && data.success && Array.isArray(data.usuarios)) {
-                const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
-                setSolicitudesCount(liveCount);
-              } else {
-                setSolicitudesCount(0);
-              }
-            })
-            .catch(() => {
+      if (appScriptUrl) {
+        fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.success && Array.isArray(data.usuarios)) {
+              const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+              setSolicitudesCount(liveCount);
+            } else {
               setSolicitudesCount(0);
-            });
-        } else {
-          setSolicitudesCount(0);
-        }
+            }
+          })
+          .catch(() => {
+            setSolicitudesCount(0);
+          });
+      } else {
+        setSolicitudesCount(0);
       }
     };
 
     sincronizarSolicitudes();
     window.addEventListener("autoscore_data_updated", sincronizarSolicitudes);
-    window.addEventListener("storage", sincronizarSolicitudes);
-    const interval = setInterval(sincronizarSolicitudes, 3000);
+    const interval = setInterval(sincronizarSolicitudes, 5000);
 
     return () => {
       window.removeEventListener("autoscore_data_updated", sincronizarSolicitudes);
-      window.removeEventListener("storage", sincronizarSolicitudes);
       clearInterval(interval);
     };
-  }, [useSimulado, appScriptUrl]);
+  }, [appScriptUrl]);
 
   // Detectar parámetros de la URL para enrutamiento automático en el arranque (QR / Links Públicos)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    
-    // Auto-configurar base de datos si viene en la URL (importante para que el escáner QR del celular funcione igual que la PC)
-    const urlSimulado = params.get("simulado");
-    if (urlSimulado !== null) {
-      setUseSimulado(urlSimulado === "true");
-    }
     const urlApi = params.get("api");
     if (urlApi) {
       setAppScriptUrl(safeDecodeURIComponent(urlApi));
@@ -146,22 +127,20 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       
-      {/* 1. Header con Toggle de Base de Datos (Simulador / Live Google Sheets) */}
+      {/* 1. Barra de Conexión a Google Sheets */}
       <div className="no-print">
         <BaseDatosToggle
-          useSimulado={useSimulado}
-          setUseSimulado={setUseSimulado}
           appScriptUrl={appScriptUrl}
           setAppScriptUrl={setAppScriptUrl}
         />
       </div>
 
       {/* 2. Banner de Estado Activo de la API */}
-      {!useSimulado && !appScriptUrl && (
+      {!appScriptUrl && (
         <div className="bg-amber-500/10 border-b border-amber-500/20 py-2 px-4 text-center no-print">
           <div className="max-w-md mx-auto flex items-center justify-center gap-2 text-xs text-amber-400 font-medium">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>Configura tu URL de Google Sheets en la esquina superior derecha ⚙️ para usar el modo Live.</span>
+            <span>Configura tu URL de Google Sheets en la barra superior ⚙️ para conectar tu base de datos.</span>
           </div>
         </div>
       )}
@@ -172,7 +151,7 @@ export default function App() {
         {/* Chasis de Dispositivo Móvil en Pantallas Grandes para emulación real */}
         <div className="w-full max-w-md bg-slate-950/20 backdrop-blur-md sm:border sm:border-white/10 sm:rounded-[36px] sm:shadow-2xl overflow-hidden min-h-[720px] flex flex-col relative sm:ring-1 sm:ring-white/5 sm:glow-silver/10 print:max-w-full print:border-none print:shadow-none print:bg-transparent">
           
-          {/* Cámara Notch simulado para estética smartphone premium */}
+          {/* Cámara Notch para estética smartphone premium */}
           <div className="hidden sm:flex justify-center w-full pt-3 pb-1 bg-black/40 border-b border-white/5 no-print">
             <div className="w-28 h-4 rounded-full bg-slate-950 border border-slate-800/80 flex items-center justify-between px-3">
               <div className="w-1.5 h-1.5 rounded-full bg-slate-900" />
@@ -186,13 +165,13 @@ export default function App() {
             {(() => {
               switch (currentView) {
                 case "home":
-                  return <InicioView onNavigate={navegarA} useSimulado={useSimulado} solicitudesCount={solicitudesCount} />;
+                  return <InicioView onNavigate={navegarA} solicitudesCount={solicitudesCount} />;
                 case "usuario":
-                  return <UsuarioView useSimulado={useSimulado} appScriptUrl={appScriptUrl} initialMode={usuarioInitialMode} />;
+                  return <UsuarioView appScriptUrl={appScriptUrl} initialMode={usuarioInitialMode} />;
                 case "mecanico":
-                  return <MecanicoView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
+                  return <MecanicoView appScriptUrl={appScriptUrl} />;
                 case "admin":
-                  return <AdminView useSimulado={useSimulado} appScriptUrl={appScriptUrl} />;
+                  return <AdminView appScriptUrl={appScriptUrl} />;
                 case "documentacion":
                   return <SoporteView onNavigate={navegarA} />;
                 default:

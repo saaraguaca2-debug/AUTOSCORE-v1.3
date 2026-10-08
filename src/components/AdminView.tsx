@@ -5,17 +5,15 @@ import {
   Sliders, Settings, Gauge, Save, RotateCcw, Sparkles, Wrench, User
 } from "lucide-react";
 import { 
-  getSimulatedData, simularAdminUpdate, 
   getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig,
-  getSolicitudesPendientesCount, notifyDataChanged
+  notifyDataChanged
 } from "../mockData";
 
 interface AdminViewProps {
-  useSimulado: boolean;
   appScriptUrl: string;
 }
 
-export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps) {
+export default function AdminView({ appScriptUrl }: AdminViewProps) {
   // Configuración de contraseña
   const adminPasswordEnv = (import.meta as any).env?.VITE_ADMIN_PASSWORD || "admin123";
   
@@ -23,6 +21,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loginPendingCount, setLoginPendingCount] = useState(0);
 
   // Datos administrados
   const [usuarios, setUsuarios] = useState<any[]>([]);
@@ -47,50 +46,58 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   const [activeAdminTab, setActiveAdminTab] = useState<"dashboard" | "usuarios" | "vehiculos" | "mecanicos" | "ajustes">("dashboard");
   const [filtroUsuario, setFiltroUsuario] = useState<"todos" | "pendientes" | "aprobados">("todos");
 
+  // Consultar solicitudes pendientes antes de loguear
+  useEffect(() => {
+    if (!isAuthorized && appScriptUrl) {
+      fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.success && Array.isArray(data.usuarios)) {
+            const count = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+            setLoginPendingCount(count);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAuthorized, appScriptUrl]);
+
   // Manejar Login del Admin
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (password === adminPasswordEnv) {
       setIsAuthorized(true);
       setAuthError(null);
-      const pending = useSimulado ? getSolicitudesPendientesCount() : 0;
-      if (pending > 0) {
-        setActiveAdminTab("usuarios");
-        setFiltroUsuario("pendientes");
-      }
       cargarDatos();
     } else {
       setAuthError("Contraseña incorrecta de Administrador. Acceso denegado.");
     }
   };
 
-  // Cargar datos (Simulados o desde Google Sheets)
+  // Cargar datos reales desde Google Sheets
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      if (useSimulado) {
-        const simData = getSimulatedData();
-        setUsuarios(simData.usuarios || []);
-        setVehiculos(simData.vehiculos || []);
-        setMecanicos(simData.mecanicos || []);
-        setHistorial(simData.historial || []);
+      if (!appScriptUrl) {
+        throw new Error("La URL de Google Sheets Apps Script no está configurada.");
+      }
+      // Llamar a doGet de Apps Script para obtener todo
+      const url = `${appScriptUrl}?accion=adminData&password=${encodeURIComponent(password)}`;
+      const res = await fetch(url, { mode: "cors" });
+      if (!res.ok) throw new Error("Fallo en la comunicación con Google Sheets.");
+      const json = await res.json();
+      if (json && json.success) {
+        const uList = json.usuarios || [];
+        setUsuarios(uList);
+        setVehiculos(json.vehiculos || []);
+        setMecanicos(json.mecanicos || []);
+        setHistorial(json.historial || []);
+        const pending = uList.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+        if (pending > 0) {
+          setActiveAdminTab("usuarios");
+          setFiltroUsuario("pendientes");
+        }
       } else {
-        if (!appScriptUrl) {
-          throw new Error("La URL de Google Sheets Apps Script no está configurada.");
-        }
-        // Llamar a doGet de Apps Script para obtener todo
-        const url = `${appScriptUrl}?accion=adminData&password=${encodeURIComponent(password)}`;
-        const res = await fetch(url, { mode: "cors" });
-        if (!res.ok) throw new Error("Fallo en la comunicación con Google Sheets.");
-        const json = await res.json();
-        if (json && json.success) {
-          setUsuarios(json.usuarios || []);
-          setVehiculos(json.vehiculos || []);
-          setMecanicos(json.mecanicos || []);
-          setHistorial(json.historial || []);
-        } else {
-          throw new Error(json.error || "Fallo en la respuesta del Apps Script.");
-        }
+        throw new Error(json.error || "Fallo en la respuesta del Apps Script.");
       }
     } catch (err: any) {
       console.error(err);
@@ -99,52 +106,37 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
     }
   };
 
-  // Enviar comando de actualización (Admin Update)
+  // Enviar comando de actualización real a Google Sheets (Admin Update)
   const ejecutarUpdate = async (subAccion: string, targetId: string, nuevoEstado: string, extraData?: any) => {
     setLoading(true);
     try {
-      if (useSimulado) {
-        const res = simularAdminUpdate({
-          subAccion,
-          targetId,
-          nuevoEstado,
-          ...extraData
-        });
-        if (res.success) {
-          await cargarDatos();
-          notifyDataChanged();
-        } else {
-          alert(res.error || "Error al actualizar localmente");
-        }
+      if (!appScriptUrl) {
+        alert("Configure la URL de Google Sheets en la esquina superior derecha.");
+        return;
+      }
+
+      const body = {
+        accion: "adminUpdate",
+        subAccion,
+        targetId,
+        nuevoEstado,
+        ...extraData
+      };
+
+      const res = await fetch(appScriptUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) throw new Error("Fallo al conectar con Google Sheets.");
+      const json = await res.json();
+      if (json && json.success) {
+        await cargarDatos();
+        notifyDataChanged();
       } else {
-        if (!appScriptUrl) {
-          alert("Configure la URL de Google Sheets en la esquina superior derecha.");
-          return;
-        }
-
-        const body = {
-          accion: "adminUpdate",
-          subAccion,
-          targetId,
-          nuevoEstado,
-          ...extraData
-        };
-
-        const res = await fetch(appScriptUrl, {
-          method: "POST",
-          mode: "cors",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(body)
-        });
-
-        if (!res.ok) throw new Error("Fallo al conectar con el servidor.");
-        const json = await res.json();
-        if (json && json.success) {
-          await cargarDatos();
-          notifyDataChanged();
-        } else {
-          alert(json.error || "Fallo al procesar en Google Sheets.");
-        }
+        alert(json.error || "Fallo al procesar en Google Sheets.");
       }
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -189,7 +181,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   };
 
   if (!isAuthorized) {
-    const pendingCount = useSimulado ? getSolicitudesPendientesCount() : 0;
+    const pendingCount = loginPendingCount;
 
     return (
       <div className="w-full max-w-md mx-auto px-4 py-12 flex flex-col items-center animate-fade-in">
@@ -279,8 +271,8 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
           </div>
           <div>
             <h3 className="text-sm font-display font-extrabold text-white leading-none">CONSOLA ADMIN</h3>
-            <span className="text-[10px] text-amber-500 font-semibold uppercase tracking-wider block mt-0.5">
-              {useSimulado ? "Modo Simulador" : "Modo Live Sheets"}
+            <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider block mt-0.5">
+              Google Sheets Oficial
             </span>
           </div>
         </div>

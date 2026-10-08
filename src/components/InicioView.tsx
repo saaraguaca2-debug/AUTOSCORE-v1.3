@@ -4,11 +4,10 @@ import { VistaActual } from "../types";
 
 interface InicioViewProps {
   onNavigate: (vista: VistaActual, modoUsuario?: "login" | "registro") => void;
-  useSimulado: boolean;
   solicitudesCount?: number;
 }
 
-export default function InicioView({ onNavigate, useSimulado, solicitudesCount = 0 }: InicioViewProps) {
+export default function InicioView({ onNavigate, solicitudesCount = 0 }: InicioViewProps) {
   return (
     <div className="w-full max-w-md mx-auto px-4 py-8 flex flex-col items-center">
       {/* Cabecera Principal - Logo Premium */}
@@ -31,7 +30,7 @@ export default function InicioView({ onNavigate, useSimulado, solicitudesCount =
           <span>Optimizado para conexiones móviles lentas (2G/3G)</span>
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5 leading-normal">
-          Peso mínimo de datos, compresión inteligente y {useSimulado ? "Modo Simulador Local instantáneo." : "conexión directa sin intermediarios."}
+          Peso mínimo de datos, compresión inteligente y conexión directa en tiempo real a Google Sheets.
         </p>
       </div>
 
