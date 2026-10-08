@@ -8,7 +8,7 @@ import {
 import { Vehiculo, HistorialRow } from "../types";
 import { 
   simularGetPorDueno, simularGetCertificado, simularRegistrarVehiculo, 
-  simularLogin, simularRegistroUsuario, getSimulatedData
+  simularLogin, simularRegistroUsuario, getSimulatedData, notifyDataChanged
 } from "../mockData";
 
 // Decodificador seguro para prevenir fallas fatales (URI Malformed) en navegadores móviles
@@ -261,6 +261,7 @@ export default function UsuarioView({ useSimulado, appScriptUrl, initialMode = "
           if (!res.ok) throw new Error("Fallo al enviar datos.");
           const json = await res.json();
           if (json && json.success) {
+            notifyDataChanged();
             setSuccessMsg("¡Registro guardado con éxito! Tu cuenta está PENDIENTE DE APROBACIÓN por el Administrador antes de ingresar.");
             setViewMode("login");
             setNombreInput("");

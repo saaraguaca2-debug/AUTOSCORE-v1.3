@@ -283,6 +283,36 @@ export function getSimulatedData() {
   return { usuarios, mecanicos, vehiculos, historial };
 }
 
+// Disparar evento para que toda la interfaz se actualice de inmediato
+export function notifyDataChanged() {
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(new CustomEvent("autoscore_data_updated"));
+    } catch (e) {
+      // Ignorar en entornos sin DOM
+    }
+  }
+}
+
+// Obtener la cantidad de solicitudes de usuario (dueños) pendientes de aprobación
+export function getSolicitudesPendientesCount(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem("autoscore_usuarios");
+    if (!raw) {
+      inicializarBaseDatosSimulada();
+      const freshRaw = localStorage.getItem("autoscore_usuarios");
+      if (!freshRaw) return 0;
+      const usuarios = JSON.parse(freshRaw) as UsuarioPropietario[];
+      return usuarios.filter(u => u.estadoUsuario === "Pendiente").length;
+    }
+    const usuarios = JSON.parse(raw) as UsuarioPropietario[];
+    return usuarios.filter(u => u.estadoUsuario === "Pendiente").length;
+  } catch (e) {
+    return 0;
+  }
+}
+
 // Guardar datos actualizados
 export function saveSimulatedData(data: {
   usuarios: UsuarioPropietario[];
@@ -294,6 +324,7 @@ export function saveSimulatedData(data: {
   localStorage.setItem("autoscore_mecanicos", JSON.stringify(data.mecanicos));
   localStorage.setItem("autoscore_vehiculos", JSON.stringify(data.vehiculos));
   localStorage.setItem("autoscore_historial", JSON.stringify(data.historial));
+  notifyDataChanged();
 }
 
 /**

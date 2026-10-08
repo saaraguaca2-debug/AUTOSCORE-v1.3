@@ -6,7 +6,8 @@ import {
 } from "lucide-react";
 import { 
   getSimulatedData, simularAdminUpdate, 
-  getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig 
+  getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig,
+  getSolicitudesPendientesCount, notifyDataChanged
 } from "../mockData";
 
 interface AdminViewProps {
@@ -51,6 +52,10 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
     if (password === adminPasswordEnv) {
       setIsAuthorized(true);
       setAuthError(null);
+      const pending = getSolicitudesPendientesCount();
+      if (pending > 0) {
+        setActiveAdminTab("usuarios");
+      }
       cargarDatos();
     } else {
       setAuthError("Contraseña incorrecta de Administrador. Acceso denegado.");
@@ -105,6 +110,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
         });
         if (res.success) {
           await cargarDatos();
+          notifyDataChanged();
         } else {
           alert(res.error || "Error al actualizar localmente");
         }
@@ -133,6 +139,7 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
         const json = await res.json();
         if (json && json.success) {
           await cargarDatos();
+          notifyDataChanged();
         } else {
           alert(json.error || "Fallo al procesar en Google Sheets.");
         }
@@ -180,6 +187,8 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
   };
 
   if (!isAuthorized) {
+    const pendingCount = getSolicitudesPendientesCount();
+
     return (
       <div className="w-full max-w-md mx-auto px-4 py-12 flex flex-col items-center animate-fade-in">
         <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-500 mb-5 shadow-lg">
@@ -189,9 +198,28 @@ export default function AdminView({ useSimulado, appScriptUrl }: AdminViewProps)
         <h2 className="text-xl font-display font-extrabold text-white text-center">
           Panel de Control AutoScore
         </h2>
-        <p className="text-xs text-slate-400 text-center mt-1.5 max-w-[80%] leading-normal mb-8">
+        <p className="text-xs text-slate-400 text-center mt-1.5 max-w-[80%] leading-normal mb-6">
           Sistema administrativo protegido para activar cuentas, renovar certificados y registrar talleres oficiales.
         </p>
+
+        {pendingCount > 0 && (
+          <div className="w-full bg-red-950/40 border border-red-500/40 p-3.5 rounded-2xl flex items-center justify-between text-xs text-red-200 mb-4 shadow-lg shadow-red-950/30">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
+              <div>
+                <span className="font-bold text-white block">
+                  {pendingCount} {pendingCount === 1 ? "solicitud de usuario pendiente" : "solicitudes de usuarios pendientes"}
+                </span>
+                <span className="text-[10px] text-red-300/80">
+                  Nuevos propietarios esperando activación en el sistema
+                </span>
+              </div>
+            </div>
+            <span className="text-[9px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30 px-2 py-0.5 rounded-full uppercase">
+              Por Aprobar
+            </span>
+          </div>
+        )}
 
         <form onSubmit={handleAdminLogin} className="w-full space-y-4">
           <div className="bg-slate-900/60 border border-white/5 p-5 rounded-2xl space-y-4">

@@ -1,13 +1,14 @@
 import React from "react";
-import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle, UserPlus } from "lucide-react";
+import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle, UserPlus, Lock } from "lucide-react";
 import { VistaActual } from "../types";
 
 interface InicioViewProps {
   onNavigate: (vista: VistaActual, modoUsuario?: "login" | "registro") => void;
   useSimulado: boolean;
+  solicitudesCount?: number;
 }
 
-export default function InicioView({ onNavigate, useSimulado }: InicioViewProps) {
+export default function InicioView({ onNavigate, useSimulado, solicitudesCount = 0 }: InicioViewProps) {
   return (
     <div className="w-full max-w-md mx-auto px-4 py-8 flex flex-col items-center">
       {/* Cabecera Principal - Logo Premium */}
@@ -33,6 +34,42 @@ export default function InicioView({ onNavigate, useSimulado }: InicioViewProps)
           Peso mínimo de datos, compresión inteligente y {useSimulado ? "Modo Simulador Local instantáneo." : "conexión directa sin intermediarios."}
         </p>
       </div>
+
+      {/* Banner de alerta de solicitudes pendientes de usuarios para Administrador */}
+      {solicitudesCount > 0 && (
+        <button
+          onClick={() => onNavigate("admin")}
+          className="w-full bg-gradient-to-r from-red-950/70 via-red-900/50 to-slate-900/90 hover:from-red-950/90 hover:via-red-900/70 hover:to-slate-900 border border-red-500/50 hover:border-red-400 text-left p-3.5 rounded-2xl mb-5 shadow-xl shadow-red-950/40 transition-all active:scale-[0.98] flex items-center justify-between group cursor-pointer"
+          id="btn-alerta-solicitudes-inicio"
+        >
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/30">
+                <Lock className="w-5 h-5 stroke-[2]" />
+              </div>
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-slate-950" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white">Solicitud de Usuario Pendiente</span>
+                <span className="bg-red-500 text-white font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full shadow">
+                  {solicitudesCount}
+                </span>
+              </div>
+              <p className="text-[10px] text-red-200/90 mt-0.5">
+                {solicitudesCount === 1 
+                  ? "Hay 1 nuevo propietario esperando activación en el Panel Admin" 
+                  : `Hay ${solicitudesCount} nuevos propietarios esperando activación en el Panel Admin`}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] font-bold text-red-400 group-hover:text-red-300 group-hover:translate-x-1 transition-all shrink-0">
+            <span>Aprobar</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </div>
+        </button>
+      )}
 
       {/* Botones de acción principales (Estilo VIP) */}
       <div className="w-full flex flex-col gap-3.5 mb-8">
@@ -122,15 +159,31 @@ export default function InicioView({ onNavigate, useSimulado }: InicioViewProps)
         </div>
       </div>
 
-      {/* Botón secundario para ver documentación e instrucciones de carpetas Next.js */}
-      <button
-        onClick={() => onNavigate("documentacion")}
-        className="mt-8 flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-400 transition-colors font-medium py-2 px-4 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10"
-        id="btn-ver-estructura"
-      >
-        <BookOpen className="w-4 h-4" />
-        Ver estructura de archivos Next.js y Apps Script
-      </button>
+      {/* Botones secundarios (Admin y Documentación) */}
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+        <button
+          onClick={() => onNavigate("admin")}
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-400 transition-colors font-medium py-2 px-3 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10 relative cursor-pointer"
+          id="btn-admin-inicio"
+        >
+          <Lock className="w-3.5 h-3.5" />
+          <span>Panel Admin</span>
+          {solicitudesCount > 0 && (
+            <span className="bg-red-600 text-white text-[8px] font-mono font-black px-1.5 py-0.5 rounded-full animate-bounce">
+              {solicitudesCount}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => onNavigate("documentacion")}
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-amber-400 transition-colors font-medium py-2 px-3 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10 cursor-pointer"
+          id="btn-ver-estructura"
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>Ver estructura y guías</span>
+        </button>
+      </div>
 
       {/* Pie de página humilde */}
       <div className="mt-12 text-center">

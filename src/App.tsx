@@ -8,7 +8,7 @@ import {
   Shield, Car, PenTool, BookOpen, ChevronRight, Home, Info, HelpCircle, AlertCircle, Sparkles, Check, Lock
 } from "lucide-react";
 import { VistaActual } from "./types";
-import { inicializarBaseDatosSimulada } from "./mockData";
+import { inicializarBaseDatosSimulada, getSolicitudesPendientesCount } from "./mockData";
 import BaseDatosToggle from "./components/BaseDatosToggle";
 import InicioView from "./components/InicioView";
 import UsuarioView from "./components/UsuarioView";
@@ -61,6 +61,42 @@ export default function App() {
   // Enrutamiento mediante Estado de React (Instantáneo y óptimo para móviles)
   const [currentView, setCurrentView] = useState<VistaActual>("home");
   const [usuarioInitialMode, setUsuarioInitialMode] = useState<"login" | "registro">("login");
+
+  // Contador en tiempo real de solicitudes de usuario pendientes de aprobación para notificar al Admin
+  const [solicitudesCount, setSolicitudesCount] = useState<number>(() => {
+    return getSolicitudesPendientesCount();
+  });
+
+  useEffect(() => {
+    const sincronizarSolicitudes = () => {
+      const count = getSolicitudesPendientesCount();
+      setSolicitudesCount(count);
+
+      // Si está en modo Live Sheets y hay URL configurada, verificar en segundo plano
+      if (!useSimulado && appScriptUrl) {
+        fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.success && Array.isArray(data.usuarios)) {
+              const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+              setSolicitudesCount(liveCount);
+            }
+          })
+          .catch(() => {});
+      }
+    };
+
+    sincronizarSolicitudes();
+    window.addEventListener("autoscore_data_updated", sincronizarSolicitudes);
+    window.addEventListener("storage", sincronizarSolicitudes);
+    const interval = setInterval(sincronizarSolicitudes, 3000);
+
+    return () => {
+      window.removeEventListener("autoscore_data_updated", sincronizarSolicitudes);
+      window.removeEventListener("storage", sincronizarSolicitudes);
+      clearInterval(interval);
+    };
+  }, [useSimulado, appScriptUrl]);
 
   // Detectar parámetros de la URL para enrutamiento automático en el arranque (QR / Links Públicos)
   useEffect(() => {
@@ -142,7 +178,7 @@ export default function App() {
             {(() => {
               switch (currentView) {
                 case "home":
-                  return <InicioView onNavigate={navegarA} useSimulado={useSimulado} />;
+                  return <InicioView onNavigate={navegarA} useSimulado={useSimulado} solicitudesCount={solicitudesCount} />;
                 case "usuario":
                   return <UsuarioView useSimulado={useSimulado} appScriptUrl={appScriptUrl} initialMode={usuarioInitialMode} />;
                 case "mecanico":
@@ -204,13 +240,29 @@ export default function App() {
 
         <button
           onClick={() => navegarA("admin")}
-          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 ${
+          className={`flex flex-col items-center gap-0.5 transition-all min-w-0 flex-1 relative ${
             currentView === "admin" ? "text-amber-500 scale-105 font-bold" : "text-slate-400 hover:text-slate-200"
           }`}
           id="dock-btn-admin"
+          title={solicitudesCount > 0 ? `${solicitudesCount} solicitud${solicitudesCount > 1 ? "es" : ""} de usuario pendiente${solicitudesCount > 1 ? "s" : ""} de aprobación` : "Panel de Administrador"}
         >
-          <Lock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
-          <span className="text-[9px] sm:text-[10px] truncate">Admin</span>
+          <div className="relative flex items-center justify-center">
+            <Lock className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+            {solicitudesCount > 0 && (
+              <>
+                <span className="absolute -top-1.5 -right-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white font-mono text-[9px] font-black min-w-[17px] h-[17px] px-1 rounded-full flex items-center justify-center shadow-lg shadow-red-500/60 border-2 border-slate-900 leading-none z-10 animate-bounce">
+                  {solicitudesCount > 99 ? "99+" : solicitudesCount}
+                </span>
+                <span className="absolute -top-1.5 -right-2.5 w-[17px] h-[17px] rounded-full bg-red-500 animate-ping opacity-75" />
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] sm:text-[10px] truncate">Admin</span>
+            {solicitudesCount > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+            )}
+          </div>
         </button>
 
         <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
