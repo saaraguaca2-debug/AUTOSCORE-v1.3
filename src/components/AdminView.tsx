@@ -73,22 +73,26 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
     }
   };
 
-  // Cargar datos reales desde Google Sheets
+  // Cargar datos reales desde la Base de Datos
   const cargarDatos = async () => {
     setLoading(true);
     try {
       if (!appScriptUrl) {
-        throw new Error("La URL de Google Sheets Apps Script no está configurada.");
+        throw new Error("La URL de la Base de Datos no está configurada.");
       }
-      // Llamar a doGet de Apps Script para obtener todo
+      // Llamar a doGet de la Base de Datos para obtener todo
       const url = `${appScriptUrl}?accion=adminData&password=${encodeURIComponent(password)}`;
       const res = await fetch(url, { mode: "cors" });
-      if (!res.ok) throw new Error("Fallo en la comunicación con Google Sheets.");
+      if (!res.ok) throw new Error("Fallo en la comunicación con la Base de Datos.");
       const json = await res.json();
       if (json && json.success) {
         const uList = json.usuarios || [];
         setUsuarios(uList);
-        setVehiculos(json.vehiculos || []);
+        const vList = (json.vehiculos || []).map((v: any) => ({
+          ...v,
+          score: Number(String(v.score || v.Score || v.puntaje || v.Puntaje || 90).replace(/[^0-9.]/g, "")) || 90
+        }));
+        setVehiculos(vList);
         setMecanicos(json.mecanicos || []);
         setHistorial(json.historial || []);
         const pending = uList.filter((u: any) => u.estadoUsuario === "Pendiente").length;
@@ -97,7 +101,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
           setFiltroUsuario("pendientes");
         }
       } else {
-        throw new Error(json.error || "Fallo en la respuesta del Apps Script.");
+        throw new Error(json.error || "Fallo en la respuesta de la Base de Datos.");
       }
     } catch (err: any) {
       console.error(err);
@@ -106,12 +110,12 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
     }
   };
 
-  // Enviar comando de actualización real a Google Sheets (Admin Update)
+  // Enviar comando de actualización real a la Base de Datos (Admin Update)
   const ejecutarUpdate = async (subAccion: string, targetId: string, nuevoEstado: string, extraData?: any) => {
     setLoading(true);
     try {
       if (!appScriptUrl) {
-        alert("Configure la URL de Google Sheets en la esquina superior derecha.");
+        alert("Configure la URL de la Base de Datos en la esquina superior derecha (⚙️).");
         return;
       }
 
@@ -130,13 +134,13 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
         body: JSON.stringify(body)
       });
 
-      if (!res.ok) throw new Error("Fallo al conectar con Google Sheets.");
+      if (!res.ok) throw new Error("Fallo al conectar con la Base de Datos.");
       const json = await res.json();
       if (json && json.success) {
         await cargarDatos();
         notifyDataChanged();
       } else {
-        alert(json.error || "Fallo al procesar en Google Sheets.");
+        alert(json.error || "Fallo al procesar en la Base de Datos.");
       }
     } catch (err: any) {
       alert("Error: " + err.message);
@@ -272,7 +276,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
           <div>
             <h3 className="text-sm font-display font-extrabold text-white leading-none">CONSOLA ADMIN</h3>
             <span className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider block mt-0.5">
-              Google Sheets Oficial
+              Base de Datos Oficial
             </span>
           </div>
         </div>
@@ -772,7 +776,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
                 </h4>
               </div>
               <span className="text-[9px] bg-amber-500/10 text-amber-400 font-mono font-bold px-2 py-0.5 rounded border border-amber-500/20">
-                Sin Apps Script
+                Configuración Local
               </span>
             </div>
 

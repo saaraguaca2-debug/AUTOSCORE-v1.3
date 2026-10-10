@@ -498,11 +498,18 @@ function doGet(e) {
         penaltyFrenos = 10;
       }
       
-      // El score dinámico es el score base registrado menos las penalidades acumuladas de mantenimiento vencido
-      const baseScore = vehiculo.score; // Ficha técnica de ingreso
-      const finalScore = Math.max(30, Math.min(100, baseScore - penaltyAceite - penaltyCorrea - penaltyFrenos));
+      // El score registrado en la base de datos (pestaña 'Vehiculos') es la fuente de verdad directa
+      const baseScore = vehiculo.score; // Score registrado en la hoja de cálculo
+      const finalScore = Math.max(30, Math.min(100, (baseScore || 90) - penaltyAceite - penaltyCorrea - penaltyFrenos));
       
-      vehiculo.score = finalScore; // Actualizamos el score dinámico calculado
+      // Respetar prioritariamente el Score guardado en la base de datos
+      if (!isNaN(baseScore) && baseScore > 0) {
+        vehiculo.score = baseScore;
+      } else {
+        vehiculo.score = finalScore;
+      }
+      vehiculo.scoreBase = baseScore;
+      vehiculo.scoreCalculado = finalScore;
       
       const respuesta = {
         success: true,

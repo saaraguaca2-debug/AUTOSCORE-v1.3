@@ -69,7 +69,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     }
   }, []);
 
-  // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA Y DATOS REALES DE GOOGLE SHEETS)
+  // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA Y DATOS REALES DE LA BASE DE DATOS)
   const handleMecanicoLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!codigoMecanico.trim()) return;
@@ -82,11 +82,11 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
       let foundMec: any = null;
 
       if (!appScriptUrl) {
-        throw new Error("Debe configurar la URL del Google Apps Script en la barra superior para validar técnicos autorizados.");
+        throw new Error("Debe configurar la URL de la base de datos en la barra superior para validar técnicos autorizados.");
       }
 
       const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
-      if (!res.ok) throw new Error("Fallo en la comunicación con Google Sheets.");
+      if (!res.ok) throw new Error("Fallo en la comunicación con la base de datos.");
       const json = await res.json();
       if (json && json.success && Array.isArray(json.mecanicos)) {
         foundMec = json.mecanicos.find(
@@ -104,10 +104,10 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
           setLoginError(null);
         }
       } else {
-        setLoginError("Código de técnico no encontrado en la base de datos de Google Sheets.");
+        setLoginError("Código de técnico no encontrado en la base de datos.");
       }
     } catch (err: any) {
-      setLoginError(err.message || "Error al verificar código en Google Sheets.");
+      setLoginError(err.message || "Error al verificar código en la base de datos.");
     } finally {
       setLoadingLogin(false);
     }
@@ -283,7 +283,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
     try {
       if (!appScriptUrl) {
-        setFormError("Debe configurar la URL del Google Apps Script en la barra superior para registrar mantenimientos.");
+        setFormError("Debe configurar la URL de la Base de Datos en la barra superior para registrar mantenimientos.");
         setIsSubmitting(false);
         return;
       }
@@ -299,7 +299,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
       });
 
       if (!response.ok) {
-        throw new Error(`Error de comunicación con Google Sheets: ${response.statusText}`);
+        throw new Error(`Error de comunicación con la Base de Datos: ${response.statusText}`);
       }
 
       const result = await response.json();
@@ -314,10 +314,10 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
         setTrabajo("");
         notifyDataChanged();
       } else {
-        setFormError((result && result.error) || "Google Sheets rechazó la firma de mantenimiento.");
+        setFormError((result && result.error) || "La Base de Datos rechazó la firma de mantenimiento.");
       }
     } catch (err: any) {
-      setFormError(err.message || "Fallo inesperado al registrar la firma en Google Sheets.");
+      setFormError(err.message || "Fallo inesperado al registrar la firma en la Base de Datos.");
     } finally {
       setIsSubmitting(false);
     }
@@ -662,7 +662,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                 try {
                   if (!appScriptUrl) {
-                    throw new Error("Debe configurar la URL del Google Apps Script en el botón de arriba ⚙️.");
+                    throw new Error("Debe configurar la URL de la Base de Datos en el botón de arriba ⚙️.");
                   }
 
                   const responseReg = await fetch(appScriptUrl, {
@@ -687,7 +687,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                   const resultReg = await responseReg.json();
                   if (!resultReg || !resultReg.success) {
-                    throw new Error(resultReg?.error || "Error al registrar vehículo en Google Sheets.");
+                    throw new Error(resultReg?.error || "Error al registrar vehículo en la Base de Datos.");
                   }
 
                   const responseMaint = await fetch(appScriptUrl, {

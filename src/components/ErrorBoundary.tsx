@@ -43,7 +43,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             </div>
             <h2 className="text-xl font-display font-extrabold text-white">¡Ups! Algo salió mal</h2>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              La aplicación detectó un error al procesar los datos de tu Google Sheets o de tu sesión actual.
+              La aplicación detectó un error al procesar los datos de tu base de datos o de tu sesión actual.
             </p>
 
             {this.state.error && (

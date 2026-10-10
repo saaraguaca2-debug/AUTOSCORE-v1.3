@@ -112,19 +112,19 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
       const apiUr = urlApi ? safeDecodeURIComponent(urlApi) : appScriptUrl;
 
       if (!apiUr) {
-        throw new Error("Debe configurar la URL del Google Sheets Apps Script.");
+        throw new Error("Debe configurar la URL de la base de datos.");
       }
       const fetchUrl = `${apiUr}?placa=${encodeURIComponent(placa.toUpperCase())}&tipoCertificado=${tipo}`;
       const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
       if (!response.ok) throw new Error("Fallo en la comunicación con el servidor.");
       const result = await response.json();
       if (result && result.success) {
-        setSelectedCar(result.vehiculo);
+        setSelectedCar(normalizeVehiculo(result.vehiculo));
         setHistorial(normalizeHistorial(result.historial || []));
         setActiveCertType(tipo);
         setViewMode("certificado");
       } else {
-        setError(result.error || "Fallo en la respuesta de Google Sheets.");
+        setError(result.error || "Fallo en la respuesta de la base de datos.");
       }
     } catch (err: any) {
       setError(err.message || "Error al conectar con la base de datos.");
@@ -146,11 +146,11 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
     try {
       if (!appScriptUrl) {
-        throw new Error("La URL de Google Sheets Apps Script no está configurada en la barra superior.");
+        throw new Error("La URL de la base de datos no está configurada en la barra superior.");
       }
       const url = `${appScriptUrl}?accion=login&idDueno=${encodeURIComponent(idDuenoInput.trim())}&contrasena=${encodeURIComponent(contrasenaInput.trim())}`;
       const res = await fetch(url, { method: "GET", mode: "cors" });
-      if (!res.ok) throw new Error("Error de conexión con Google Sheets.");
+      if (!res.ok) throw new Error("Error de conexión con la base de datos.");
       const json = await res.json();
       if (json && json.success) {
         const userObj = json.usuario || json.user || {};
@@ -172,17 +172,17 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         const vehUrl = `${appScriptUrl}?idDueno=${encodeURIComponent(cleanId)}`;
         const vehRes = await fetch(vehUrl, { method: "GET", mode: "cors" });
         const vehJson = await vehRes.json();
-        setVehiculos(vehJson.data || []);
+        setVehiculos((vehJson.data || []).map(normalizeVehiculo));
         setLoggedUser({
           idDueno: cleanId,
           nombre: cleanNombre
         });
         setViewMode("garage");
       } else {
-        setError(json.error || "Credenciales incorrectas en Google Sheets.");
+        setError(json.error || "Credenciales incorrectas en la base de datos.");
       }
     } catch (err: any) {
-      setError(err.message || "Fallo la comunicación con Google Sheets.");
+      setError(err.message || "Fallo la comunicación con la base de datos.");
     } finally {
       setLoading(false);
     }
@@ -204,7 +204,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
     try {
       if (!appScriptUrl) {
-        throw new Error("La URL de Google Sheets Apps Script no está configurada en la barra superior.");
+        throw new Error("La URL de la base de datos no está configurada en la barra superior.");
       }
       const payload = {
         accion: "registroUsuario",
@@ -229,7 +229,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         setNombreInput("");
         setContrasenaInput("");
       } else {
-        setError(json.error || "Error al procesar el registro en Google Sheets.");
+        setError(json.error || "Error al procesar el registro en la base de datos.");
       }
     } catch (err: any) {
       setError(err.message || "Error al conectar con la base de datos.");
@@ -247,20 +247,20 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     setActiveVehicleTab("certificado");
 
     try {
-      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      if (!appScriptUrl) throw new Error("URL de la base de datos no configurada.");
       const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=${tipo}`;
       const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
       if (!response.ok) throw new Error("Error en red.");
       const result = await response.json();
       if (result && result.success) {
-        setSelectedCar(result.vehiculo);
+        setSelectedCar(normalizeVehiculo(result.vehiculo));
         setHistorial(normalizeHistorial(result.historial || []));
         setViewMode("certificado");
       } else {
-        setError(result.error || "No se encontró el certificado en Google Sheets.");
+        setError(result.error || "No se encontró el certificado en la base de datos.");
       }
     } catch (err: any) {
-      setError(err.message || "Error al sincronizar con Google Sheets.");
+      setError(err.message || "Error al sincronizar con la base de datos.");
     } finally {
       setLoading(false);
     }
@@ -275,20 +275,20 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     setActiveVehicleTab("firmas");
 
     try {
-      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      if (!appScriptUrl) throw new Error("URL de la base de datos no configurada.");
       const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=completo`;
       const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
       if (!response.ok) throw new Error("Error en red.");
       const result = await response.json();
       if (result && result.success) {
-        setSelectedCar(result.vehiculo);
+        setSelectedCar(normalizeVehiculo(result.vehiculo));
         setHistorial(normalizeHistorial(result.historial || []));
         setViewMode("certificado");
       } else {
         setError(result.error || "No se encontraron registros de firmas para este vehículo.");
       }
     } catch (err: any) {
-      setError(err.message || "Error al sincronizar con Google Sheets.");
+      setError(err.message || "Error al sincronizar con la base de datos.");
     } finally {
       setLoading(false);
     }
@@ -328,7 +328,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     };
 
     try {
-      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      if (!appScriptUrl) throw new Error("URL de la base de datos no configurada.");
       const payload = {
         accion: "registrarVehiculo",
         ...nuevoVehiculo
@@ -349,10 +349,10 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         setNewModelo("");
         setNewAnio("");
       } else {
-        setError(json.error || "No se pudo registrar en Google Sheets.");
+        setError(json.error || "No se pudo registrar en la base de datos.");
       }
     } catch (err: any) {
-      setError(err.message || "Fallo la sincronización con Google Sheets.");
+      setError(err.message || "Fallo la sincronización con la base de datos.");
     } finally {
       setRegistrandoCar(false);
     }
@@ -459,6 +459,66 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     }
     
     return "";
+  };
+
+  // Normalizar de forma ultra robusta los datos del vehículo para reflejar con 100% de exactitud el Score y datos de la base de datos
+  const normalizeVehiculo = (rawCar: any): Vehiculo => {
+    if (!rawCar || typeof rawCar !== "object") {
+      return {
+        placa: "",
+        marca: "",
+        modelo: "",
+        anio: new Date().getFullYear(),
+        idDueno: "",
+        score: 90,
+        estadoCertificado: "Activo"
+      };
+    }
+
+    // 1. Extraer score con tolerancia total a nombres de columna y formatos en la Base de Datos
+    let parsedScore: number | null = null;
+    const scoreKeys = [
+      "score", "Score", "SCORE", "puntaje", "Puntaje", "PUNTAJE", 
+      "puntos", "Puntos", "scoreMecanico", "ScoreMecanico", "calificacion"
+    ];
+    
+    for (const k of scoreKeys) {
+      if (rawCar[k] !== undefined && rawCar[k] !== null && String(rawCar[k]).trim() !== "") {
+        const cleanNum = Number(String(rawCar[k]).replace(/[^0-9.]/g, ""));
+        if (!isNaN(cleanNum)) {
+          parsedScore = cleanNum;
+          break;
+        }
+      }
+    }
+
+    // Priorizar score original de la base de datos si viene en scoreBase
+    if (parsedScore === null && rawCar.scoreBase !== undefined && rawCar.scoreBase !== null) {
+      const cleanNum = Number(String(rawCar.scoreBase).replace(/[^0-9.]/g, ""));
+      if (!isNaN(cleanNum)) parsedScore = cleanNum;
+    }
+
+    const cleanScore = parsedScore !== null ? Math.max(0, Math.min(100, Math.round(parsedScore))) : 90;
+
+    // 2. Extraer año
+    let cleanAnio = Number(rawCar.anio || rawCar.Anio || rawCar.año || rawCar.Año || 0);
+    if (isNaN(cleanAnio) || cleanAnio < 1900) {
+      cleanAnio = new Date().getFullYear();
+    }
+
+    // 3. Extraer estado del certificado
+    const rawEstado = rawCar.estadoCertificado || rawCar.EstadoCertificado || rawCar.estado || rawCar.Estado || "Activo";
+    const cleanEstado: "Activo" | "Vencido" = String(rawEstado).trim().toLowerCase() === "vencido" ? "Vencido" : "Activo";
+
+    return {
+      placa: String(rawCar.placa || rawCar.Placa || "").trim().toUpperCase(),
+      marca: String(rawCar.marca || rawCar.Marca || "").trim(),
+      modelo: String(rawCar.modelo || rawCar.Modelo || "").trim(),
+      anio: cleanAnio,
+      idDueno: String(rawCar.idDueno || rawCar.IdDueno || "").trim(),
+      score: cleanScore,
+      estadoCertificado: cleanEstado
+    };
   };
 
   // Normalizar de forma ultra robusta los registros de historial para que sus campos siempre coincidan con las expectativas de la UI
@@ -1206,6 +1266,135 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                             </div>
                           </div>
                         </div>
+
+                        {/* HISTORIAL OFICIAL DE MANTENIMIENTOS REGISTRADOS EN EL CERTIFICADO VIP */}
+                        <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-4 space-y-3.5 text-left">
+                          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                              <Wrench className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Mantenimientos Certificados Registrados ({historial.length})</span>
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/10 font-bold">
+                              Hoja de Vida Oficial
+                            </span>
+                          </div>
+
+                          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+                            {historial.map((row, idx) => {
+                              const tel = row.telefonoMecanico || "";
+                              const formattedTel = formatWhatsAppNumber(tel);
+                              const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
+                              const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
+                              const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+
+                              return (
+                                <div key={idx} className="cert-timeline-item border-l-3 border-amber-500 pl-4 py-2.5 relative space-y-2 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
+                                  {/* Fecha y Kilometraje */}
+                                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
+                                    <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
+                                      📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
+                                    </span>
+                                    <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                                      ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Trabajo Realizado */}
+                                  <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                    {row.trabajoRealizado}
+                                  </p>
+                                  
+                                  {/* Taller y Mecánico Certificado */}
+                                  <div className="cert-workshop-box bg-[#0b0c10] border border-amber-500/20 rounded-xl p-2.5 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-2.5 shadow-md">
+                                    <div className="text-left space-y-0.5">
+                                      <div className="flex items-center gap-1.5">
+                                        <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                        <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setActiveTecnicoModal({
+                                              taller: tallerReal,
+                                              codigo: row.codigoMecanico,
+                                              nombreMecanico: nombreMec,
+                                              mecanicoNombre: nombreMec,
+                                              telefono: tel,
+                                              fecha: row.fecha,
+                                              kilometraje: row.kilometraje,
+                                              trabajo: row.trabajoRealizado,
+                                              trabajoRealizado: row.trabajoRealizado
+                                            });
+                                          }}
+                                          className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
+                                        >
+                                          {tallerReal}
+                                        </button>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-300">
+                                        <div className="flex items-center gap-1 text-slate-200 font-medium">
+                                          <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                                          <span>Mecánico: <strong className="text-white font-bold">{nombreMec}</strong></span>
+                                        </div>
+                                        {maskedCode && <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>}
+                                        {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
+                                      </div>
+                                    </div>
+                                    
+                                    {/* Botón WhatsApp de Verificación (no-print) */}
+                                    <div className="no-print">
+                                      {(() => {
+                                        const hasPhone = !!formattedTel;
+                                        const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
+                                        const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
+                                        const directTextMsg = `Hola ${targetName}. Tengo en mano el Certificado Oficial AutoScore VIP del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) donde figura que su taller realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la autenticidad de este registro técnico? Muchas gracias.`;
+                                        
+                                        return (
+                                          <a
+                                            href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-2.5 py-1.5 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
+                                          >
+                                            <Phone className="w-3 h-3 shrink-0 fill-current" />
+                                            <span>Verificar en WhatsApp</span>
+                                            <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
+                                          </a>
+                                        );
+                                      })()}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+
+                            {historial.length === 0 && (
+                              <div className="p-5 bg-slate-950/60 border border-white/10 rounded-2xl text-center space-y-1.5">
+                                <PenTool className="w-7 h-7 text-slate-500 mx-auto" />
+                                <p className="text-xs text-slate-200 font-bold">Sin mantenimientos registrados aún en la base de datos.</p>
+                                <p className="text-[10px] text-slate-400">
+                                  Los servicios y reparaciones realizadas en talleres autorizados aparecerán aquí automáticamente una vez estampada la firma del mecánico.
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Directorio de Talleres Auditores */}
+                        {historial.length > 0 && (
+                          <div className="pt-2 border-t border-white/5 space-y-2 text-left">
+                            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
+                              Talleres Certificados que han auditado este vehículo ({Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}):
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).map((tall, tIdx) => (
+                                <span key={tIdx} className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                  <Wrench className="w-3 h-3" />
+                                  <span>{tall}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 

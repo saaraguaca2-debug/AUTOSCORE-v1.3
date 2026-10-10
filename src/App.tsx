@@ -39,7 +39,7 @@ export default function App() {
     }
   }, []);
 
-  // Detectar URL predeterminada del Apps Script desde variables de entorno
+  // Detectar URL predeterminada de la Base de Datos desde variables de entorno
   const defaultUrl = (
     (import.meta as any).env?.VITE_APPSCRIPT_URL || 
     (import.meta as any).env?.NEXT_PUBLIC_APPSCRIPT_URL || 
@@ -127,7 +127,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
       
-      {/* 1. Barra de Conexión a Google Sheets */}
+      {/* 1. Barra de Conexión a Base de Datos */}
       <div className="no-print">
         <BaseDatosToggle
           appScriptUrl={appScriptUrl}
@@ -140,7 +140,7 @@ export default function App() {
         <div className="bg-amber-500/10 border-b border-amber-500/20 py-2 px-4 text-center no-print">
           <div className="max-w-md mx-auto flex items-center justify-center gap-2 text-xs text-amber-400 font-medium">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>Configura tu URL de Google Sheets en la barra superior ⚙️ para conectar tu base de datos.</span>
+            <span>Configura la URL de tu base de datos en la barra superior ⚙️ para conectar el sistema.</span>
           </div>
         </div>
       )}

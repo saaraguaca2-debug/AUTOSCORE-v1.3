@@ -30,7 +30,7 @@ export default function InicioView({ onNavigate, solicitudesCount = 0 }: InicioV
           <span>Optimizado para conexiones móviles lentas (2G/3G)</span>
         </div>
         <p className="text-[11px] text-slate-400 mt-1.5 leading-normal">
-          Peso mínimo de datos, compresión inteligente y conexión directa en tiempo real a Google Sheets.
+          Peso mínimo de datos, compresión inteligente y conexión directa en tiempo real a tu base de datos.
         </p>
       </div>
 
