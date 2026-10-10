@@ -134,9 +134,14 @@ body {
   background: #334155;
 }
 
-/* Estilos para impresión limpia (Guardar como PDF) */
+/* Estilos profesionales para descarga e impresión limpia (Guardar como PDF / Imprimir) */
 @media print {
-  /* Ocultar elementos que no deben ir en el PDF */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 12mm;
+  }
+
+  /* Ocultar elementos no relevantes en el PDF o papel impreso */
   .no-print,
   #btn-cert-back,
   #btn-download-pdf,
@@ -148,66 +153,201 @@ body {
   .fixed,
   #btn-portal-usuario,
   #btn-portal-mecanico,
-  .inline-flex.mt-2.bg-white\/5 {
+  .inline-flex.mt-2.bg-white\/5,
+  details,
+  summary {
     display: none !important;
   }
 
-  /* Resetear fondos oscuros a claro para impresión y ahorro de tinta */
+  /* Resetear lienzo completo para fondo blanco puro e impresión nítida */
   body, html, #root, main {
     background: #ffffff !important;
-    color: #000000 !important;
+    background-image: none !important;
+    color: #0f172a !important;
     width: 100% !important;
     max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
     box-shadow: none !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
-  /* El chasis del teléfono debe desaparecer en la impresión */
+  /* Remover chasis móvil en la hoja impresa */
   .w-full.max-w-md {
     max-width: 100% !important;
     width: 100% !important;
     border: none !important;
     box-shadow: none !important;
-    background: transparent !important;
+    background: #ffffff !important;
     padding: 0 !important;
+    margin: 0 auto !important;
   }
 
-  /* Tarjeta de Certificado */
+  /* Encabezado Oficial exclusivo para impresión */
+  .print-only-header {
+    display: block !important;
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  /* Ocultar marcas de agua tenues o difusas en pantalla que manchan la impresión */
+  .watermark-digital,
+  .pointer-events-none.select-none {
+    display: none !important;
+  }
+
+  /* Tarjeta de Certificado Principal y de Firmas */
+  .cert-printable-card,
+  .cert-signatures-sheet,
   .glass-panel,
   .glass-panel-vip {
-    background: #f8fafc !important;
-    border: 1px solid #cbd5e1 !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    border: 2px solid #0f172a !important;
     color: #0f172a !important;
     box-shadow: none !important;
     border-radius: 12px !important;
-    padding: 16px !important;
-    margin: 0 !important;
+    padding: 20px !important;
+    margin: 0 0 16px 0 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
-  /* Textos de alta legibilidad para impresión */
-  .text-white, h3.text-white, h4.text-white, span.text-white, .text-slate-200 {
+  /* Anular fondos oscuros que provocan texto ilegible en descargas */
+  [class*="bg-black"],
+  [class*="bg-slate-"],
+  [class*="bg-[#"],
+  [class*="from-"],
+  [class*="to-"],
+  [class*="bg-gradient-"] {
+    background: transparent !important;
+    background-image: none !important;
+  }
+
+  /* Textos de alta legibilidad y contraste en impresión */
+  .text-white, h1, h2, h3, h4, h5, h6, strong, b, div, p, span {
     color: #0f172a !important;
+    text-shadow: none !important;
   }
-  .text-slate-300, .text-slate-400, .text-slate-500, .text-slate-600 {
-    color: #334155 !important;
+  .text-slate-100, .text-slate-200, .text-slate-300 {
+    color: #1e293b !important;
+  }
+  .text-slate-400, .text-slate-500, .text-slate-600 {
+    color: #475569 !important;
   }
 
-  /* Bloques internos del certificado */
-  .bg-black\/40, .bg-black\/30 {
+  /* Bloques interiores de datos del vehículo */
+  .cert-data-box {
+    background: #f8fafc !important;
+    border: 1.5px solid #0f172a !important;
+    border-radius: 10px !important;
+    padding: 14px !important;
+    margin-bottom: 14px !important;
+    color: #0f172a !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Placa del vehículo en impresión (estilo chapa real de alto contraste) */
+  .cert-placa-badge {
+    background: #0f172a !important;
+    color: #ffffff !important;
+    border: 2px solid #000000 !important;
+    padding: 4px 12px !important;
+    border-radius: 6px !important;
+    font-weight: 900 !important;
+    display: inline-block !important;
+    letter-spacing: 0.1em !important;
+  }
+
+  .cert-placa-badge span,
+  .cert-placa-badge strong {
+    color: #ffffff !important;
+  }
+
+  /* Círculo del Score en impresión */
+  .cert-score-circle {
+    background: #fffbeb !important;
+    border: 3.5px solid #d97706 !important;
+    border-radius: 9999px !important;
+    color: #92400e !important;
+    box-shadow: none !important;
+  }
+
+  .cert-score-circle span {
+    color: #92400e !important;
+  }
+
+  /* Badges de estado en impresión */
+  .cert-tag-salud {
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #f1f5f9 !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    display: inline-block !important;
+  }
+
+  /* Línea de tiempo y registros de mantenimientos */
+  .cert-timeline-item {
+    background: #ffffff !important;
+    border-left: 3.5px solid #d97706 !important;
+    border-top: 1px solid #cbd5e1 !important;
+    border-right: 1px solid #cbd5e1 !important;
+    border-bottom: 1px solid #cbd5e1 !important;
+    border-radius: 0 8px 8px 0 !important;
+    color: #0f172a !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 12px !important;
+    padding: 12px !important;
+  }
+
+  .cert-work-desc {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    color: #1e293b !important;
+    padding: 8px 10px !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+    margin: 6px 0 !important;
+  }
+
+  .cert-workshop-box {
     background: #f1f5f9 !important;
     border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+    color: #0f172a !important;
+    padding: 10px !important;
+  }
+
+  .cert-workshop-box span,
+  .cert-workshop-box strong,
+  .cert-workshop-box div {
     color: #0f172a !important;
   }
 
-  .bg-amber-400\/10, .bg-amber-500\/10 {
-    background: #fef9c3 !important;
-    color: #854d0e !important;
-    border-color: #fef08a !important;
+  /* Bloque QR en el certificado para verificación o firma */
+  .cert-qr-container {
+    background: #f8fafc !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 10px !important;
+    padding: 12px !important;
+    color: #0f172a !important;
   }
 
-  /* Forzar la visualización de colores e imágenes de fondo en navegadores modernos */
+  /* Imágenes y QR con contraste perfecto */
+  img {
+    filter: contrast(130%) !important;
+    max-width: 100% !important;
+  }
+
+  /* Forzar preservación de colores e imágenes de fondo precisas */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

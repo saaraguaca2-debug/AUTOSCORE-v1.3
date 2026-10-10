@@ -45,6 +45,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
   const [selectedCar, setSelectedCar] = useState<Vehiculo | null>(null);
   const [activeCertType, setActiveCertType] = useState<"simple" | "completo">("simple");
+  const [activeVehicleTab, setActiveVehicleTab] = useState<"certificado" | "firmas">("certificado");
   const [historial, setHistorial] = useState<HistorialRow[]>([]);
   
   // Feedback
@@ -90,6 +91,11 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     const params = new URLSearchParams(window.location.search);
     const urlPlaca = params.get("placa");
     const urlTipo = params.get("tipoCertificado");
+    const urlTab = params.get("tab");
+
+    if (urlTab === "firmas") {
+      setActiveVehicleTab("firmas");
+    }
 
     if (urlPlaca) {
       const tipoC = urlTipo === "completo" ? "completo" : "simple";
@@ -238,6 +244,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     setError(null);
     setShowFaceToFaceQR(false);
     setActiveCertType(tipo);
+    setActiveVehicleTab("certificado");
 
     try {
       if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
@@ -251,6 +258,34 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         setViewMode("certificado");
       } else {
         setError(result.error || "No se encontró el certificado en Google Sheets.");
+      }
+    } catch (err: any) {
+      setError(err.message || "Error al sincronizar con Google Sheets.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cargar Registros de Firmas Técnicas directamente desde el Garage
+  const handleVerRegistrosFirmas = async (veh: Vehiculo) => {
+    setLoading(true);
+    setError(null);
+    setShowFaceToFaceQR(false);
+    setActiveCertType("completo");
+    setActiveVehicleTab("firmas");
+
+    try {
+      if (!appScriptUrl) throw new Error("URL de Google Sheets no configurada.");
+      const fetchUrl = `${appScriptUrl}?placa=${encodeURIComponent(veh.placa)}&tipoCertificado=completo`;
+      const response = await fetch(fetchUrl, { method: "GET", mode: "cors" });
+      if (!response.ok) throw new Error("Error en red.");
+      const result = await response.json();
+      if (result && result.success) {
+        setSelectedCar(result.vehiculo);
+        setHistorial(normalizeHistorial(result.historial || []));
+        setViewMode("certificado");
+      } else {
+        setError(result.error || "No se encontraron registros de firmas para este vehículo.");
       }
     } catch (err: any) {
       setError(err.message || "Error al sincronizar con Google Sheets.");
@@ -888,37 +923,50 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           {/* Vehículos Listado */}
           <div className="space-y-3">
             {vehiculos.map((car, idx) => (
-              <div key={idx} className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 space-y-3">
+              <div key={idx} className="bg-slate-950/60 border border-white/10 rounded-2xl p-4 space-y-3.5 hover:border-amber-500/25 transition-all shadow-xl">
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">{car.marca}</span>
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">{car.marca}</span>
                     <h4 className="text-base font-display font-extrabold text-white mt-0.5">{car.modelo} <span className="text-slate-400 font-normal text-xs">({car.anio})</span></h4>
-                    <span className="inline-block bg-black border border-white/10 font-mono text-xs font-bold tracking-widest px-2.5 py-0.5 rounded text-slate-300 mt-2">
+                    <span className="inline-block bg-black border border-white/20 font-mono text-xs font-bold tracking-widest px-2.5 py-0.5 rounded text-amber-400 mt-2">
                       {car.placa}
                     </span>
                   </div>
                   
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                    car.estadoCertificado === "Activo"
-                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      : "bg-red-500/10 text-red-400 border border-red-500/20"
-                  }`}>
-                    Cert: {car.estadoCertificado}
-                  </span>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      car.estadoCertificado === "Activo"
+                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                        : "bg-red-500/10 text-red-400 border border-red-500/20"
+                    }`}>
+                      Cert: {car.estadoCertificado}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold text-slate-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                      Score: <strong className="text-amber-400">{car.score} pts</strong>
+                    </span>
+                  </div>
                 </div>
 
+                {/* ACCIONES SEPARADAS PARA EL PROPIETARIO: CERTIFICADOS vs REGISTROS DE FIRMAS */}
                 <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => handleVerCertificado(car, "simple")}
-                    className="py-1.5 text-[11px] font-bold bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-center"
+                    onClick={() => {
+                      handleVerCertificado(car, "completo");
+                      setActiveVehicleTab("certificado");
+                    }}
+                    className="py-2 px-3 text-[11px] font-black bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 rounded-xl text-center flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer shadow-sm"
                   >
-                    Certificado Simple
+                    <Shield className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                    <span>📜 Ver Certificado</span>
                   </button>
                   <button
-                    onClick={() => handleVerCertificado(car, "completo")}
-                    className="py-1.5 text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/20 text-amber-400 rounded-lg text-center"
+                    onClick={() => {
+                      handleVerRegistrosFirmas(car);
+                    }}
+                    className="py-2 px-3 text-[11px] font-black bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-center flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer shadow-sm"
                   >
-                    Certificado Completo
+                    <PenTool className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    <span>✍️ Registros de Firmas</span>
                   </button>
                 </div>
               </div>
@@ -930,20 +978,53 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         </div>
       )}
 
-      {/* ---------------- VISTA D: CERTIFICADO VIP DETALLADO ---------------- */}
+      {/* ---------------- VISTA D: DETALLE DE VEHÍCULO (CERTIFICADO Y REGISTROS DE FIRMAS SEPARADOS) ---------------- */}
       {viewMode === "certificado" && selectedCar && (
-        <div className="space-y-5 animate-fade-in">
+        <div className="space-y-4 animate-fade-in">
           
-          {/* Botón Volver */}
+          {/* Botón Volver y Header de Navegación */}
           <div className="flex items-center justify-between no-print">
             <button
               onClick={handleBackToGarage}
-              className="flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-400 font-extrabold uppercase tracking-wider"
+              className="flex items-center gap-1.5 text-xs text-amber-500 hover:text-amber-400 font-extrabold uppercase tracking-wider cursor-pointer"
             >
               <ChevronLeft className="w-4.5 h-4.5" />
               <span>Volver</span>
             </button>
-            <span className="text-[10px] font-mono text-slate-500">AUTOSCORE VERIFIED ID</span>
+            <span className="text-[10px] font-mono text-slate-400 font-bold">AUTOSCORE VERIFIED ID</span>
+          </div>
+
+          {/* SELECTOR DE PESTAÑAS: SEPARACIÓN DE CERTIFICADOS Y REGISTROS DE FIRMAS */}
+          <div className="flex bg-slate-950/80 p-1.5 rounded-2xl border border-white/10 shadow-lg no-print gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveVehicleTab("certificado")}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeVehicleTab === "certificado"
+                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md font-black"
+                  : "text-slate-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Shield className="w-4 h-4 shrink-0" />
+              <span>Certificado Oficial</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveVehicleTab("firmas")}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                activeVehicleTab === "firmas"
+                  ? "bg-gradient-to-r from-emerald-500 to-emerald-600 text-slate-950 shadow-md font-black"
+                  : "text-slate-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <PenTool className="w-4 h-4 shrink-0" />
+              <span>Registros de Firmas</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full font-bold ${
+                activeVehicleTab === "firmas" ? "bg-black/40 text-emerald-300" : "bg-white/10 text-slate-300"
+              }`}>
+                {historial.length}
+              </span>
+            </button>
           </div>
 
           {/* VALIDACIÓN DE CERTIFICADO VENCIDO (BLOQUEO COMERCIAL) */}
@@ -970,287 +1051,502 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl text-xs transition-all animate-pulse shadow-lg border border-red-500/30"
+                className="w-full inline-flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl text-xs transition-all animate-pulse shadow-lg border border-red-500/30 cursor-pointer"
               >
                 <Phone className="w-4 h-4" />
                 <span>Pagar Renovación por WhatsApp</span>
               </a>
             </div>
           ) : (
-            // CERTIFICADO VÁLIDO (SIMPLE O COMPLETO)
-            <div className="space-y-4">
-              
-              {/* Contenedor Físico del Certificado */}
-              <div className={`relative rounded-3xl p-5 border overflow-hidden ${
-                activeCertType === "completo"
-                  ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
-                  : "bg-gradient-to-b from-slate-900/60 to-slate-950/90 border-white/10 shadow-xl"
-              }`}>
-                
-                {/* MARCA DE AGUA DIGITAL EN FONDO SATINADO (SOLO COMPLETO) */}
-                {activeCertType === "completo" && (
-                  <div className="absolute inset-0 pointer-events-none select-none overflow-hidden opacity-[0.03] flex items-center justify-center">
-                    <div className="text-[52px] font-black text-amber-500 tracking-widest uppercase rotate-[-30deg] whitespace-nowrap leading-none space-y-8 select-none">
-                      <div>AUTOSCORE CERTIFIED</div>
-                      <div>VERIFICADO VIP</div>
-                      <div>AUTOSCORE CERTIFIED</div>
+            <>
+              {/* ============================================================== */}
+              {/* SUB-VISTA 1: CERTIFICADO OFICIAL DE SALUD MECÁNICA */}
+              {/* ============================================================== */}
+              {activeVehicleTab === "certificado" && (
+                <div className="space-y-4">
+                  {/* Selector de Tipo (Simple / Completo) */}
+                  <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded-xl border border-white/10 no-print text-[11px]">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider pl-1.5 font-bold">Tipo de Certificado:</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => setActiveCertType("simple")}
+                        className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                          activeCertType === "simple"
+                            ? "bg-white/20 text-white border border-white/25 shadow-sm"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        Simple
+                      </button>
+                      <button
+                        onClick={() => setActiveCertType("completo")}
+                        className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                          activeCertType === "completo"
+                            ? "bg-amber-500/25 text-amber-400 border border-amber-500/35 font-black shadow-sm"
+                            : "text-slate-400 hover:text-amber-400"
+                        }`}
+                      >
+                        Completo VIP
+                      </button>
                     </div>
                   </div>
-                )}
 
-                {/* Sello de Autenticidad */}
-                <div className="flex justify-between items-start mb-5 relative z-10">
-                  <div>
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
-                      activeCertType === "completo"
-                        ? "bg-amber-400/10 text-amber-400 border-amber-500/20"
-                        : "bg-slate-400/10 text-slate-400 border-slate-400/20"
-                    }`}>
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                      <span>Certificado {activeCertType.toUpperCase()}</span>
-                    </span>
-                    <span className="block text-[8px] font-mono text-slate-500 uppercase tracking-widest mt-1">Sello Oficial Inalterable</span>
-                  </div>
-                  <Shield className={`w-5 h-5 ${activeCertType === "completo" ? "text-amber-500" : "text-slate-400"}`} />
-                </div>
-
-                {/* Caja de Datos y Score en Grande */}
-                <div className="bg-black/50 border border-white/5 rounded-2xl p-4 space-y-4 relative z-10">
-                  <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                    <div className="text-center sm:text-left">
-                      <span className="text-[9px] text-slate-500 font-mono uppercase tracking-wider block">UNIDAD EVALUADA</span>
-                      <h4 className="text-lg font-display font-black text-white mt-0.5 leading-tight">{selectedCar.marca} {selectedCar.modelo}</h4>
-                      <span className="text-xs text-slate-400 font-light block">Año fabricación: {selectedCar.anio}</span>
-                      <div className="inline-block bg-slate-900 border border-white/10 font-mono text-xs font-bold tracking-widest px-3 py-1 rounded text-slate-300 mt-2">
-                        PLACA: {selectedCar.placa}
+                  {/* Contenedor Físico Imprimible del Certificado */}
+                  <div className={`cert-printable-card relative rounded-3xl p-5 border overflow-hidden ${
+                    activeCertType === "completo"
+                      ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
+                      : "bg-gradient-to-b from-slate-900/60 to-slate-950/90 border-white/10 shadow-xl"
+                  }`}>
+                    
+                    {/* Encabezado Oficial Exclusivo para Impresión / PDF */}
+                    <div className="hidden print-only-header">
+                      <div className="flex justify-between items-center pb-2 border-b-2 border-slate-900">
+                        <div>
+                          <h2 className="text-xl font-black text-slate-900 tracking-wider">AUTOSCORE 1.3</h2>
+                          <p className="text-[10px] text-slate-700 font-mono">SISTEMA OFICIAL DE HISTORIAL Y TRAZABILIDAD AUTOMOTRIZ</p>
+                        </div>
+                        <div className="text-right text-[10px] text-slate-700 font-mono">
+                          <div>Folio / Placa: <strong className="text-slate-900 font-bold">{selectedCar.placa}</strong></div>
+                          <div>Fecha de Emisión: {new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-col items-center">
-                      <div className={`w-28 h-28 rounded-full border-4 border-amber-500/10 flex flex-col items-center justify-center ${getScoreColor(selectedCar.score)}`}>
-                        <span className="text-3xl font-black text-white leading-none">{selectedCar.score}</span>
-                        <span className="text-[9px] font-bold tracking-widest uppercase opacity-75 mt-1">SCORE</span>
+                    {/* Sello de Autenticidad */}
+                    <div className="flex justify-between items-start mb-5 relative z-10">
+                      <div>
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
+                          activeCertType === "completo"
+                            ? "bg-amber-400/10 text-amber-400 border-amber-500/20"
+                            : "bg-slate-400/10 text-slate-400 border-slate-400/20"
+                        }`}>
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Certificado {activeCertType.toUpperCase()}</span>
+                        </span>
+                        <span className="block text-[8px] font-mono text-slate-400 uppercase tracking-widest mt-1">Sello Oficial Inalterable</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 mt-2 font-black uppercase tracking-wider">
-                        {getSaludMecanicaTag(selectedCar.score)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Bloque QR de Firma Técnica Integrado en el Certificado / Hoja del Vehículo */}
-                <div className="mt-4 p-4 bg-emerald-950/25 border border-emerald-500/20 rounded-2xl relative z-10 text-left">
-                  <div className="flex items-center gap-3 mb-2.5">
-                    <PenTool className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
-                    <div>
-                      <h5 className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 leading-none">REGISTRO DE FIRMA TÉCNICA</h5>
-                      <span className="text-[8px] text-slate-400 block mt-0.5">Escáner rápido para el mecánico o taller de confianza</span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/40 p-3 rounded-xl border border-emerald-500/10">
-                    <div className="bg-white p-2.5 rounded-xl shrink-0 shadow-md">
-                      <img
-                        src={generateMecanicoQRCodeUrl()}
-                        alt="QR Firma Técnico"
-                        className="w-28 h-28 block"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                    <div className="space-y-1.5 text-center sm:text-left">
-                      <span className="inline-block text-[9px] font-mono font-black text-white bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded uppercase">
-                        Placa: {selectedCar.placa}
-                      </span>
-                      <p className="text-[11px] text-slate-300 leading-tight font-bold">
-                        Escanear para firmar reparaciones en este vehículo
-                      </p>
-                      <p className="text-[9px] text-slate-400 leading-normal">
-                        Pre-carga automáticamente los datos del <strong>{selectedCar.marca} {selectedCar.modelo} ({selectedCar.anio})</strong> para registrar su firma digital y actualizar su score de salud mecánica de forma instantánea.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* LÍNEA DE TIEMPO COMPLETA (SOLO CERTIFICADO COMPLETO) */}
-                {activeCertType === "completo" && (
-                  <div className="mt-6 space-y-4 relative z-10">
-                    <div className="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-2 border-b border-white/5 pb-2">
-                      <h5 className="text-[10px] font-mono font-bold uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
-                        <ClipboardList className="w-4 h-4" />
-                        <span>Línea de Tiempo Verificada ({historial.length})</span>
-                      </h5>
+                      <Shield className={`w-5 h-5 ${activeCertType === "completo" ? "text-amber-500" : "text-slate-400"}`} />
                     </div>
 
-                    <div className="space-y-5 max-h-[360px] overflow-y-auto pr-1">
-                      {historial.map((row, idx) => {
-                        // Obtener teléfono del mecánico de forma segura directamente desde la propiedad telefonoMecanico hidratada
-                        const tel = row.telefonoMecanico || "";
-                        const formattedTel = formatWhatsAppNumber(tel);
-                        
-                        const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
-                        const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
-                        const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
-
-                        // Mensaje personalizado de corroboración para compradores interesados
-                        const textMsg = `Hola ${tallerReal}. Estoy evaluando la compra del vehículo ${selectedCar?.marca} ${selectedCar?.modelo} (Placa: ${selectedCar?.placa}) y en su Certificado de AutoScore aparece registrado que ustedes realizaron el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado}"\n\n¿Podrían confirmarme la validez de este servicio realizado en su taller? Muchas gracias.`;
-
-                        return (
-                          <div key={idx} className="border-l-2 border-amber-500 pl-4 py-2 relative space-y-3 bg-slate-950/20 rounded-r-xl pr-2 hover:bg-slate-950/40 transition-all duration-200">
-                            {/* Fecha y Kilometraje */}
-                            <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                              <span className="bg-slate-900 border border-white/5 px-2 py-0.5 rounded text-slate-300 font-bold">{row.fecha ? row.fecha.split(" ")[0] : ""}</span>
-                              <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/10">{row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km</span>
-                            </div>
-                            
-                            {/* Trabajo Realizado */}
-                            <p className="text-xs text-slate-100 leading-relaxed font-normal bg-black/30 p-2.5 rounded-lg border border-white/5">{row.trabajoRealizado}</p>
-                            
-                            {/* ENLACE QUE ABRE TARJETA DEL TALLER */}
-                            <div className="flex justify-start">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveTecnicoModal({
-                                    taller: tallerReal,
-                                    codigo: row.codigoMecanico,
-                                    nombreMecanico: nombreMec,
-                                    mecanicoNombre: nombreMec,
-                                    telefono: tel,
-                                    fecha: row.fecha,
-                                    kilometraje: row.kilometraje,
-                                    trabajo: row.trabajoRealizado,
-                                    trabajoRealizado: row.trabajoRealizado
-                                  });
-                                }}
-                                className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/5 hover:bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                              >
-                                <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                <span>Ver Tarjeta del Taller ({tallerReal})</span>
-                              </button>
-                            </div>
-
-                            {/* TARJETA DEL TALLER INTEGRADA (Trazabilidad Inmediata) */}
-                            <div className="bg-[#0b0c10] border border-amber-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
-                              <div className="text-left space-y-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                  <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setActiveTecnicoModal({
-                                        taller: tallerReal,
-                                        codigo: row.codigoMecanico,
-                                        nombreMecanico: nombreMec,
-                                        mecanicoNombre: nombreMec,
-                                        telefono: tel,
-                                        fecha: row.fecha,
-                                        kilometraje: row.kilometraje,
-                                        trabajo: row.trabajoRealizado,
-                                        trabajoRealizado: row.trabajoRealizado
-                                      });
-                                    }}
-                                    className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
-                                  >
-                                    {tallerReal}
-                                  </button>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-slate-300">
-                                  <div className="flex items-center gap-1 text-emerald-400 font-bold">
-                                    <User className="w-3 h-3 text-emerald-400 shrink-0" />
-                                    <span>Mecánico: <strong className="text-slate-100 font-black">{nombreMec}</strong></span>
-                                  </div>
-                                  <span className="text-slate-500 font-mono text-[9px]">• Sello: #{maskedCode}</span>
-                                  {tel && <span className="text-slate-500 font-mono text-[9px]">• Tel: +{tel}</span>}
-                                </div>
-                              </div>
-                              
-                              {/* Botón de Contacto Directo WhatsApp - Siempre visible en verde brillante, con fallback al administrador */}
-                              {(() => {
-                                const hasPhone = !!formattedTel;
-                                const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
-                                const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
-                                const directTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) y en su Certificado de AutoScore aparece registrado que el taller "${row.taller || "Taller"}" realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la validez de este servicio? Muchas gracias.`;
-                                
-                                return (
-                                  <a
-                                    href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
-                                  >
-                                    <Phone className="w-3 h-3 shrink-0 fill-current" />
-                                    <span>Contactar por WhatsApp</span>
-                                    <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
-                                  </a>
-                                );
-                              })()}
-                            </div>
+                    {/* Caja de Datos y Score en Grande (cert-data-box) */}
+                    <div className="cert-data-box bg-black/50 border border-white/10 rounded-2xl p-4 space-y-4 relative z-10">
+                      <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="text-center sm:text-left">
+                          <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider block">UNIDAD EVALUADA</span>
+                          <h4 className="text-lg font-display font-black text-white mt-0.5 leading-tight">{selectedCar.marca} {selectedCar.modelo}</h4>
+                          <span className="text-xs text-slate-300 font-light block">Año fabricación: {selectedCar.anio}</span>
+                          <div className="cert-placa-badge inline-block bg-slate-900 border border-white/20 font-mono text-xs font-bold tracking-widest px-3 py-1 rounded text-amber-400 mt-2 shadow-inner">
+                            PLACA: {selectedCar.placa}
                           </div>
-                        );
-                      })}
-                      {historial.length === 0 && (
-                        <p className="text-xs text-slate-500 text-center py-4">No se han firmado mantenimientos técnicos aún.</p>
-                      )}
-                    </div>
-
-                    {/* SECCIÓN CONSOLIDADA DE MECÁNICOS CERTIFICADOS CON ENLACE DE WHATSAPP DIRECTO */}
-                    {historial.length > 0 && (
-                      <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-2xl mt-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Shield className="w-4 h-4 text-emerald-400" />
-                            <span className="text-[10px] font-mono font-bold text-slate-200 uppercase tracking-wider">Mecánicos Reparadores ({
-                              Array.from(new Set(historial.map(h => h.codigoMecanico).filter(Boolean))).length
-                            })</span>
-                          </div>
-                          
-                          <button
-                            onClick={copyMecanicosTrazabilidad}
-                            className="text-[8.5px] font-bold text-slate-300 hover:text-amber-400 border border-white/10 hover:border-amber-500/30 px-2 py-0.5 rounded transition-all bg-slate-950 flex items-center gap-1"
-                          >
-                            {copiedMecanicos ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5 text-amber-500" />}
-                            <span>Copiar Lista</span>
-                          </button>
                         </div>
 
-                        <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
-                          {(() => {
-                            const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
+                        <div className="flex flex-col items-center">
+                          <div className={`cert-score-circle w-28 h-28 rounded-full border-4 border-amber-500/20 flex flex-col items-center justify-center ${getScoreColor(selectedCar.score)}`}>
+                            <span className="text-3xl font-black text-white leading-none">{selectedCar.score}</span>
+                            <span className="text-[9px] font-bold tracking-widest uppercase opacity-75 mt-1">SCORE</span>
+                          </div>
+                          <span className="cert-tag-salud text-[10px] text-slate-300 mt-2 font-black uppercase tracking-wider">
+                            {getSaludMecanicaTag(selectedCar.score)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                            historial.forEach((row) => {
-                              const cod = row.codigoMecanico || "";
-                              if (cod && !uniqueMecsMap[cod]) {
-                                const tel = getMechanicPhone(row);
-                                uniqueMecsMap[cod] = {
-                                  taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado",
-                                  nombre: row.nombreMecanico || (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado"),
-                                  telefono: tel ? String(tel) : "",
-                                  codigo: cod
-                                };
-                              }
-                            });
+                    {/* Resumen de Auditoría y QR de Validación para Compradores (Solo Certificado Completo) */}
+                    {activeCertType === "completo" && (
+                      <div className="mt-4 space-y-3.5 relative z-10">
+                        <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-4 space-y-3 text-left">
+                          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
+                              <ClipboardList className="w-3.5 h-3.5" />
+                              <span>Auditoría de Salud Mecánica</span>
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                              {historial.length} Firmas en Taller
+                            </span>
+                          </div>
 
-                            return Object.values(uniqueMecsMap).map((mec, index) => {
-                              const cleanedPhone = formatWhatsAppNumber(mec.telefono);
-                              const maskedSeal = mec.codigo ? String(mec.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
-                              const textMsg = `Hola ${mec.taller}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa} y en la plataforma de AutoScore aparece registrado que ustedes firmaron su mantenimiento con sello digital #${maskedSeal}. ¿Podrían confirmarme la validez de estos trabajos en su taller? Muchas gracias.`;
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="bg-black/40 p-2.5 rounded-xl border border-white/5">
+                              <span className="text-[9px] text-slate-400 block font-mono">Último Kilometraje:</span>
+                              <strong className="text-white font-mono text-sm block mt-0.5">
+                                {historial.length > 0 && historial[0]?.kilometraje != null
+                                  ? `${Number(historial[0].kilometraje).toLocaleString()} km`
+                                  : "0 km"}
+                              </strong>
+                            </div>
+                            <div className="bg-black/40 p-2.5 rounded-xl border border-white/5">
+                              <span className="text-[9px] text-slate-400 block font-mono">Talleres Auditores:</span>
+                              <strong className="text-amber-400 font-mono text-sm block mt-0.5">
+                                {Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length} Talleres
+                              </strong>
+                            </div>
+                          </div>
+
+                          {/* QR Oficial de Validación Pública del Certificado para Compradores */}
+                          <div className="cert-qr-container pt-2 border-t border-white/5 flex flex-col sm:flex-row items-center gap-3.5 bg-black/40 p-3 rounded-xl border border-amber-500/10">
+                            <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
+                              <img
+                                src={generateQRCodeUrl()}
+                                alt="QR Validación Certificado"
+                                className="w-24 h-24 block"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <div className="space-y-1 text-center sm:text-left">
+                              <span className="inline-block text-[9px] font-mono font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded uppercase">
+                                Verificación Pública
+                              </span>
+                              <p className="text-[11px] text-white leading-tight font-bold">
+                                Escanear para validar autenticidad en tiempo real
+                              </p>
+                              <p className="text-[9px] text-slate-300 leading-normal">
+                                Cualquier interesado, comprador o aseguradora puede verificar este certificado directamente en la plataforma oficial de AutoScore.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Información en Certificado Simple */}
+                    {activeCertType === "simple" && (
+                      <div className="mt-5 p-4 bg-slate-950/60 border border-white/10 rounded-2xl text-center relative z-10 space-y-1">
+                        <p className="text-xs text-slate-300 font-semibold leading-normal">Constancia Oficial de Score emitida para uso personal.</p>
+                        <p className="text-[10px] text-slate-400 max-w-[85%] mx-auto leading-normal">
+                          Para acceder a la auditoría de intervenciones y compartir con compradores, seleccione el <strong>Certificado Completo VIP</strong>.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* OPCIONES DE COMPARTIR Y ACCIONES (no-print) */}
+                  {activeCertType === "completo" && (
+                    <div className="bg-slate-900/40 border border-white/10 p-4 rounded-2xl space-y-3.5 no-print text-left">
+                      <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                        <Share2 className="w-4 h-4 text-amber-500" />
+                        <span className="block text-[10px] font-bold text-slate-300 uppercase tracking-widest">COMPARTIR CERTIFICADO CON COMPRADORES</span>
+                      </div>
+
+                      <div className="flex flex-col gap-2.5">
+                        <a
+                          href={`https://wa.me/?text=${encodeURIComponent(
+                            `¡Hola! Te comparto el Certificado Oficial de AutoScore de mi vehículo *${selectedCar.marca} ${selectedCar.modelo} ${selectedCar.anio}* (Placa: *${selectedCar.placa}*), con un Score de Salud Mecánica de *${selectedCar.score}/100*. Puedes verificar todo el historial detallado de mantenimientos certificados en talleres autorizados aquí:\n\n${getPublicShareUrl()}`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-[#25D366]/10 active:scale-[0.99] cursor-pointer"
+                        >
+                          <Phone className="w-4 h-4 shrink-0 fill-current" />
+                          <span>Compartir por WhatsApp</span>
+                        </a>
+
+                        <button
+                          onClick={copyPublicLink}
+                          className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+                        >
+                          {copiedLink ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span className="text-emerald-400 font-black">¡Enlace Copiado al Portapapeles!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 text-amber-500 shrink-0" />
+                              <span>Copiar Enlace para Compradores o Marketplace</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botón Imprimir / Guardar en PDF para dueño */}
+                  <div className="space-y-2.5 no-print">
+                    <button
+                      onClick={() => window.print()}
+                      className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/25 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
+                      <span>Imprimir / Descargar Certificado en PDF</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => setActiveVehicleTab("firmas")}
+                      className="w-full text-center py-2 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <PenTool className="w-3.5 h-3.5" />
+                      <span>¿Necesitas que el mecánico firme un trabajo? Ir a Registros de Firmas →</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ============================================================== */}
+              {/* SUB-VISTA 2: REGISTROS DE FIRMAS TÉCNICAS (TALLER Y BITÁCORA) */}
+              {/* ============================================================== */}
+              {activeVehicleTab === "firmas" && (
+                <div className="space-y-4">
+                  {/* Contenedor Imprimible de Bitácora y Firmas */}
+                  <div className="cert-printable-card cert-signatures-sheet bg-gradient-to-b from-[#0c100e] to-[#040605] border border-emerald-500/30 rounded-3xl p-5 shadow-2xl space-y-5">
+                    
+                    {/* Encabezado Oficial Exclusivo para Impresión y PDF */}
+                    <div className="hidden print-only-header">
+                      <div className="flex justify-between items-center pb-2 border-b-2 border-slate-900">
+                        <div>
+                          <h2 className="text-xl font-black text-slate-900 tracking-wider">AUTOSCORE 1.3</h2>
+                          <p className="text-[10px] text-slate-700 font-mono">HOJA OFICIAL DE REGISTRO DE FIRMAS TÉCNICAS Y MANTENIMIENTOS</p>
+                        </div>
+                        <div className="text-right text-[10px] text-slate-700 font-mono">
+                          <div>Vehículo: <strong className="text-slate-900 font-bold">{selectedCar.marca} {selectedCar.modelo}</strong></div>
+                          <div>Placa: <strong className="text-slate-900 font-bold">{selectedCar.placa}</strong></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Encabezado en pantalla */}
+                    <div className="flex justify-between items-start border-b border-white/10 pb-3">
+                      <div>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          <PenTool className="w-3 h-3 text-emerald-400" />
+                          <span>Trazabilidad de Taller</span>
+                        </span>
+                        <h4 className="text-base font-display font-black text-white mt-1">Registros de Firmas Técnicas</h4>
+                        <span className="text-[10px] text-slate-400 font-mono">Placa: {selectedCar.placa} • {selectedCar.marca} {selectedCar.modelo}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-mono font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                          {historial.length} Firmas
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* BLOQUE QR PARA QUE EL MECÁNICO O TALLER FIRME */}
+                    <div className="cert-qr-container bg-emerald-950/20 border border-emerald-500/20 rounded-2xl p-4 text-left space-y-3">
+                      <div className="flex items-center gap-2.5">
+                        <QrCode className="w-4.5 h-4.5 text-emerald-400 shrink-0" />
+                        <div>
+                          <h5 className="text-[11px] font-mono font-extrabold uppercase tracking-wider text-emerald-400 leading-none">
+                            CÓDIGO QR PARA FIRMA TÉCNICA EN TALLER
+                          </h5>
+                          <span className="text-[9px] text-slate-300 block mt-0.5">
+                            Muestra este código al mecánico para que asiente y certifique la reparación desde su celular
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-center gap-4 bg-black/50 p-3.5 rounded-xl border border-emerald-500/15">
+                        <div className="bg-white p-2.5 rounded-xl shrink-0 shadow-lg">
+                          <img
+                            src={generateMecanicoQRCodeUrl()}
+                            alt="QR Firma Técnico"
+                            className="w-32 h-32 block mx-auto"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div className="space-y-2 text-center sm:text-left flex-1">
+                          <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
+                            <span className="inline-block text-[9px] font-mono font-black text-white bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 rounded uppercase">
+                              Placa: {selectedCar.placa}
+                            </span>
+                            <span className="inline-block text-[9px] font-mono font-bold text-slate-300 bg-white/5 border border-white/10 px-2 py-0.5 rounded">
+                              {selectedCar.marca} {selectedCar.modelo} ({selectedCar.anio})
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-200 leading-snug font-medium">
+                            El mecánico escanea este QR para cargar automáticamente los datos del auto, registrar el servicio y estampar su sello digital.
+                          </p>
+                          
+                          {/* Acciones de Compartir QR al Mecánico (no-print) */}
+                          <div className="flex flex-wrap gap-2 pt-1 no-print justify-center sm:justify-start">
+                            <a
+                              href={`https://wa.me/?text=${encodeURIComponent(
+                                `Hola, te comparto el enlace de firma técnica de AutoScore para mi vehículo *${selectedCar.marca} ${selectedCar.modelo}* (Placa: *${selectedCar.placa}*). Por favor entra aquí para registrar y firmar el mantenimiento realizado:\n\n${generateMecanicoQRCodeUrl() ? `${getCleanBaseAndPath()}?vista=mecanico&placa=${selectedCar.placa}${appScriptUrl ? `&api=${encodeURIComponent(appScriptUrl)}` : ""}` : ""}`
+                              )}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-3 py-1.5 rounded-lg text-[10px] flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                            >
+                              <Phone className="w-3 h-3 fill-current" />
+                              <span>Enviar al Mecánico por WhatsApp</span>
+                            </a>
+
+                            <button
+                              onClick={() => {
+                                const link = `${getCleanBaseAndPath()}?vista=mecanico&placa=${selectedCar.placa}${appScriptUrl ? `&api=${encodeURIComponent(appScriptUrl)}` : ""}`;
+                                navigator.clipboard.writeText(link);
+                                setCopiedLink(true);
+                                setTimeout(() => setCopiedLink(false), 2000);
+                              }}
+                              className="bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 active:scale-95 cursor-pointer"
+                            >
+                              {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-amber-500" />}
+                              <span>{copiedLink ? "¡Copiado!" : "Copiar Enlace"}</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* BITÁCORA CRONOLÓGICA DE FIRMAS REGISTRADAS */}
+                    <div className="space-y-3.5 text-left">
+                      <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                        <h5 className="text-[11px] font-mono font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
+                          <ClipboardList className="w-4 h-4" />
+                          <span>Firmas de Mantenimientos Registradas ({historial.length})</span>
+                        </h5>
+                      </div>
+
+                      <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
+                        {historial.map((row, idx) => {
+                          const tel = row.telefonoMecanico || "";
+                          const formattedTel = formatWhatsAppNumber(tel);
+                          const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
+                          const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
+                          const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+
+                          return (
+                            <div key={idx} className="cert-timeline-item border-l-3 border-emerald-500 pl-4 py-2.5 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
+                              {/* Fecha y Kilometraje */}
+                              <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
+                                <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
+                                  📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
+                                </span>
+                                <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                                  ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
+                                </span>
+                              </div>
                               
-                              return (
-                                <div key={index} className="flex items-center justify-between p-2 bg-slate-950/80 border border-white/5 rounded-xl text-xs">
-                                  <div>
-                                    <span className="font-extrabold text-white block truncate max-w-[150px]">{mec.taller}</span>
-                                    <span className="text-[9px] text-slate-400 block font-mono">Mecánico: {mec.nombre}</span>
-                                    <span className="text-[8px] text-slate-500 font-mono block">Sello Digital: #{maskedSeal}</span>
+                              {/* Trabajo Realizado */}
+                              <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                {row.trabajoRealizado}
+                              </p>
+                              
+                              {/* Tarjeta del Taller y Mecánico Firmante */}
+                              <div className="cert-workshop-box bg-[#0b0c10] border border-emerald-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
+                                <div className="text-left space-y-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveTecnicoModal({
+                                          taller: tallerReal,
+                                          codigo: row.codigoMecanico,
+                                          nombreMecanico: nombreMec,
+                                          mecanicoNombre: nombreMec,
+                                          telefono: tel,
+                                          fecha: row.fecha,
+                                          kilometraje: row.kilometraje,
+                                          trabajo: row.trabajoRealizado,
+                                          trabajoRealizado: row.trabajoRealizado
+                                        });
+                                      }}
+                                      className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
+                                    >
+                                      {tallerReal}
+                                    </button>
                                   </div>
-                                  
+                                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-slate-300">
+                                    <div className="flex items-center gap-1 text-emerald-400 font-bold">
+                                      <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      <span>Mecánico: <strong className="text-slate-100 font-black">{nombreMec}</strong></span>
+                                    </div>
+                                    <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>
+                                    {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
+                                  </div>
+                                </div>
+                                
+                                {/* Botón WhatsApp de Verificación (no-print) */}
+                                <div className="no-print">
                                   {(() => {
-                                    const hasPhone = !!mec.telefono;
-                                    const finalPhone = hasPhone ? cleanedPhone : formatWhatsAppNumber(adminPhoneEnv);
-                                    const targetName = hasPhone ? mec.taller : "Soporte / Administrador";
-                                    const customTextMsg = `Hola ${targetName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y en la plataforma de AutoScore aparece registrado que el taller "${mec.taller}" firmó su mantenimiento con sello digital #${maskedSeal}. ¿Podrían confirmarme la validez de estos trabajos? Muchas gracias.`;
+                                    const hasPhone = !!formattedTel;
+                                    const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
+                                    const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
+                                    const directTextMsg = `Hola ${targetName}. Tengo en mano el registro de mantenimiento del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) donde figura que su taller realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la autenticidad de esta firma técnica? Muchas gracias.`;
                                     
                                     return (
+                                      <a
+                                        href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-3 py-2 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
+                                      >
+                                        <Phone className="w-3 h-3 shrink-0 fill-current" />
+                                        <span>Verificar Firma en WhatsApp</span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
+                                      </a>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {historial.length === 0 && (
+                          <div className="p-6 bg-slate-950/60 border border-white/10 rounded-2xl text-center space-y-2">
+                            <PenTool className="w-8 h-8 text-slate-600 mx-auto" />
+                            <p className="text-xs text-slate-300 font-bold">Aún no se han registrado firmas técnicas en este vehículo.</p>
+                            <p className="text-[10px] text-slate-400 max-w-xs mx-auto">
+                              Muestra el código QR de arriba a tu mecánico en el taller para que registre y certifique su primera reparación.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* DIRECTORIO CONSOLIDADO DE TALLERES FIRMANTES */}
+                      {historial.length > 0 && (
+                        <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-2xl mt-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Shield className="w-4 h-4 text-emerald-400" />
+                              <span className="text-[10px] font-mono font-bold text-slate-200 uppercase tracking-wider">
+                                Talleres Firmantes ({Array.from(new Set(historial.map(h => h.codigoMecanico).filter(Boolean))).length})
+                              </span>
+                            </div>
+                            
+                            <button
+                              onClick={copyMecanicosTrazabilidad}
+                              className="text-[9px] font-bold text-slate-200 hover:text-amber-400 border border-white/10 hover:border-amber-500/30 px-2 py-0.5 rounded transition-all bg-slate-950 flex items-center gap-1 cursor-pointer no-print"
+                            >
+                              {copiedMecanicos ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5 text-amber-500" />}
+                              <span>Copiar Lista</span>
+                            </button>
+                          </div>
+
+                          <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                            {(() => {
+                              const uniqueMecsMap: { [key: string]: { taller: string, nombre: string, telefono: string, codigo: string } } = {};
+                              historial.forEach((row) => {
+                                const cod = row.codigoMecanico || "";
+                                if (cod && !uniqueMecsMap[cod]) {
+                                  const tel = getMechanicPhone(row);
+                                  uniqueMecsMap[cod] = {
+                                    taller: row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado",
+                                    nombre: row.nombreMecanico || (row.taller ? `Técnico de ${row.taller}` : "Mecánico Certificado"),
+                                    telefono: tel ? String(tel) : "",
+                                    codigo: cod
+                                  };
+                                }
+                              });
+
+                              return Object.values(uniqueMecsMap).map((mec, index) => {
+                                const cleanedPhone = formatWhatsAppNumber(mec.telefono);
+                                const maskedSeal = mec.codigo ? String(mec.codigo).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+                                const hasPhone = !!mec.telefono;
+                                const finalPhone = hasPhone ? cleanedPhone : formatWhatsAppNumber(adminPhoneEnv);
+                                const targetName = hasPhone ? mec.taller : "Soporte / Administrador";
+                                const customTextMsg = `Hola ${targetName}. Tengo en mano los registros de firmas del vehículo placa ${selectedCar?.placa || ""} donde el taller "${mec.taller}" figura con sello digital #${maskedSeal}. ¿Podrían corroborar la validez de estas intervenciones? Muchas gracias.`;
+
+                                return (
+                                  <div key={index} className="flex items-center justify-between p-2 bg-slate-950/80 border border-white/5 rounded-xl text-xs">
+                                    <div>
+                                      <span className="font-extrabold text-white block truncate max-w-[150px]">{mec.taller}</span>
+                                      <span className="text-[9px] text-slate-300 block font-mono">Mecánico: {mec.nombre}</span>
+                                      <span className="text-[8px] text-slate-400 font-mono block">Sello Digital: #{maskedSeal}</span>
+                                    </div>
+                                    <div className="no-print">
                                       <a
                                         href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(customTextMsg)}`}
                                         target="_blank"
@@ -1258,185 +1554,41 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                         className="bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] font-bold px-2.5 py-1 rounded text-[10px] flex items-center gap-1.5 transition-all border border-[#25D366]/20 active:scale-95 cursor-pointer"
                                       >
                                         <Phone className="w-3 h-3 text-[#25D366] fill-current" />
-                                        <span>{hasPhone ? "WhatsApp" : "Soporte"}</span>
+                                        <span>WhatsApp</span>
                                         <ExternalLink className="w-2.5 h-2.5 opacity-60" />
                                       </a>
-                                    );
-                                  })()}
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* INFORMACIÓN SIMPLE (OCULTA LÍNEA DE TIEMPO) */}
-                {activeCertType === "simple" && (
-                  <div className="mt-5 p-4 bg-slate-950/60 border border-white/5 rounded-2xl text-center relative z-10 space-y-1">
-                    <p className="text-xs text-slate-400 font-semibold leading-normal">Línea de Tiempo detallada oculta por privacidad personal.</p>
-                    <p className="text-[10px] text-slate-600 max-w-[80%] mx-auto leading-normal">
-                      La versión simple está bloqueada para compartirse y no genera ningún tipo de link ni QR de acceso externo.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* OPCIONES DE COMPARTIR INTERACTIVAS (SOLO COMPLETO) */}
-              {activeCertType === "completo" && (
-                <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl space-y-4 no-print text-left">
-                  <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-                    <Share2 className="w-4 h-4 text-amber-500" />
-                    <span className="block text-[10px] font-bold text-slate-300 uppercase tracking-widest">COMPARTIR CERTIFICADO PRESTIGIO</span>
-                  </div>
-
-                  <div className="flex flex-col gap-2.5">
-                    {/* ACCIÓN PRINCIPAL: COMPARTIR DIRECTAMENTE EN WHATSAPP */}
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(
-                        `¡Hola! Te comparto el Certificado Oficial de AutoScore de mi vehículo *${selectedCar.marca} ${selectedCar.modelo} ${selectedCar.anio}* (Placa: *${selectedCar.placa}*), con un Score de Salud Mecánica de *${selectedCar.score}/100*. Puedes verificar todo el historial detallado de mantenimientos certificados en talleres autorizados aquí:\n\n${getPublicShareUrl()}`
-                      )}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-[#25D366]/10 active:scale-[0.99]"
-                    >
-                      <Phone className="w-4 h-4 shrink-0 fill-current" />
-                      <span>Compartir por WhatsApp</span>
-                    </a>
-
-                    {/* ACCIÓN SECUNDARIA: COPIAR ENLACE */}
-                    <button
-                      onClick={copyPublicLink}
-                      className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 font-bold py-3 px-4 rounded-xl text-xs transition-all flex items-center justify-center gap-2 active:scale-[0.99]"
-                    >
-                      {copiedLink ? (
-                        <>
-                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span className="text-emerald-400 font-black">¡Enlace Copiado al Portapapeles!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-4 h-4 text-amber-500 shrink-0" />
-                          <span>Copiar Enlace para Compradores o Marketplace</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-
-                  {/* AJUSTES AVANZADOS Y CÓDIGOS QR (COLAPSADOS PARA EVITAR RUIDO VISUAL) */}
-                  <details className="group border border-white/5 bg-slate-950/40 rounded-xl overflow-hidden">
-                    <summary className="cursor-pointer text-[9.5px] font-bold text-slate-400 hover:text-white p-3 flex justify-between items-center select-none bg-slate-950/25">
-                      <span className="flex items-center gap-1.5 font-mono uppercase tracking-wider">
-                        <QrCode className="w-3.5 h-3.5 text-emerald-500" />
-                        <span>Ver Código QR de Firma Técnica (Avanzado)</span>
-                      </span>
-                      <span className="text-[8px] opacity-70 transition-transform group-open:rotate-180">▼</span>
-                    </summary>
-                    <div className="p-3 border-t border-white/5 space-y-4 bg-slate-950/15">
-                      <div className="flex flex-col items-stretch gap-2">
-                        {/* QR Mecánico */}
-                        <button
-                          onClick={() => {
-                            setShowMecanicoQR(!showMecanicoQR);
-                          }}
-                          className={`p-2.5 rounded-lg border text-[10px] font-bold transition-all text-center flex flex-col items-center justify-center gap-1.5 ${
-                            showMecanicoQR
-                              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                              : "bg-slate-900 border-white/5 text-slate-300 hover:bg-slate-900/80"
-                          }`}
-                        >
-                          <PenTool className="w-4 h-4 text-emerald-400" />
-                          <div>
-                            <span className="block leading-tight text-emerald-400 font-extrabold">QR para Mecánico</span>
-                            <span className="block text-[8px] font-normal text-slate-400 mt-0.5">Para firmar en sitio</span>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
-                        </button>
-                      </div>
-
-                      {/* AJUSTE COMPATIBILIDAD QR PARA CELULARES */}
-                      <div className="bg-slate-950 p-3 rounded-lg border border-white/5 space-y-2.5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="text-left">
-                            <span className="text-[9px] font-bold text-white block">Sello QR Ultraligero</span>
-                            <span className="text-[8px] text-slate-400 block mt-0.5">Mejora el escaneo en teléfonos antiguos</span>
-                          </div>
-                          <button
-                            onClick={() => setUsarQrUltraligero(!usarQrUltraligero)}
-                            className={`text-[8px] font-black px-2 py-1 rounded transition-all shrink-0 ${
-                              usarQrUltraligero
-                                ? "bg-amber-500 text-slate-950"
-                                : "bg-slate-900 border border-white/10 text-slate-300"
-                            }`}
-                          >
-                            {usarQrUltraligero ? "⚡ Activado" : "Standard"}
-                          </button>
-                        </div>
-
-                        <div className="pt-2 border-t border-white/5">
-                          <label className="block text-[8px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                            URL Base del Servidor (QR)
-                          </label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={baseUrlOverride}
-                              onChange={(e) => setBaseUrlOverride(e.target.value)}
-                              placeholder="Ej: https://mi-dominio.com"
-                              className="flex-1 bg-slate-900 text-[9.5px] text-slate-200 border border-white/10 px-2.5 py-1 rounded font-mono focus:outline-none"
-                            />
-                            <button
-                              onClick={() => setBaseUrlOverride(window.location.origin)}
-                              className="bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white px-2 py-1 rounded text-[8px] font-bold transition-all border border-white/5 shrink-0"
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* RENDER QR MECÁNICO */}
-                      {showMecanicoQR && (
-                        <div className="p-3 bg-slate-950 border border-emerald-500/10 rounded-lg text-center space-y-2">
-                          <div className="bg-white p-3 rounded-xl inline-block shadow-lg border border-emerald-500/10">
-                            <img
-                              src={generateMecanicoQRCodeUrl()}
-                              alt="QR Firma Técnico"
-                              className="w-52 h-52 block mx-auto"
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                          <p className="text-[10px] text-slate-300 leading-tight">
-                            El mecánico escanea este código para firmar reparaciones del vehículo desde su celular de forma directa.
-                          </p>
                         </div>
                       )}
                     </div>
-                  </details>
+                  </div>
+
+                  {/* BOTÓN IMPRIMIR / DESCARGAR BITÁCORA DE FIRMAS (no-print) */}
+                  <div className="space-y-2.5 no-print">
+                    <button
+                      onClick={() => window.print()}
+                      className="w-full bg-slate-950 hover:bg-slate-900 border border-emerald-500/30 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <Download className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
+                      <span>Imprimir / Descargar Bitácora de Firmas en PDF</span>
+                    </button>
+
+                    <button
+                      onClick={() => setActiveVehicleTab("certificado")}
+                      className="w-full text-center py-2 text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>← Volver a la Vista del Certificado Oficial</span>
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {/* Botón Imprimir / Guardar en PDF para dueño */}
-              <div className="space-y-2.5 no-print">
-                <button
-                  onClick={() => window.print()}
-                  className="w-full bg-slate-950 hover:bg-slate-900 border border-white/5 py-3 rounded-2xl text-xs text-slate-300 hover:text-white font-bold text-center flex items-center justify-center gap-2 shadow-md transition-all active:scale-[0.98]"
-                >
-                  <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
-                  <span>Imprimir / Descargar en PDF</span>
-                </button>
-                
-                {typeof window !== "undefined" && window.self !== window.top && (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-left">
-                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block">⚠️ Restricción de Vista Previa</span>
-                    <p className="text-[9.5px] text-slate-300 leading-normal mt-1">
-                      El botón de impresión está bloqueado por la seguridad del visualizador de AI Studio. Haz clic en el botón <strong className="text-white">"Abrir en nueva pestaña"</strong> arriba a la derecha para ver la app en pantalla completa y poder descargar tu PDF.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
+            </>
           )}
         </div>
       )}
