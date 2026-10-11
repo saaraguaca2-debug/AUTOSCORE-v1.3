@@ -3,7 +3,7 @@ import {
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
   Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
   CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
-  PenTool, Share2, FileText
+  PenTool, Share2, FileText, AlertTriangle
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { notifyDataChanged } from "../mockData";
@@ -1087,76 +1087,85 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             </button>
           </div>
 
-          {/* VALIDACIÓN DE CERTIFICADO VENCIDO (BLOQUEO COMERCIAL) */}
-          {selectedCar.estadoCertificado === "Vencido" ? (
-            <div className="bg-red-950/20 border-2 border-red-500/30 p-6 rounded-3xl text-center space-y-4 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-600 via-red-500 to-red-600 animate-pulse"></div>
-              <div className="inline-flex p-4 rounded-full bg-red-500/10 text-red-500 border border-red-500/20 mb-2">
-                <Lock className="w-8 h-8" />
+          {/* ALERTA Y REGLA DE CERTIFICADO VENCIDO (SOLO VISTA SIMPLE EN APP, SIN DESCARGAS NI COMPARTIR) */}
+          {selectedCar.estadoCertificado === "Vencido" && (
+            <div className="bg-red-950/40 border border-red-500/40 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-red-200 shadow-xl no-print animate-in fade-in">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-red-500/20 text-red-400 shrink-0 border border-red-500/30">
+                  <AlertTriangle className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <span className="font-bold text-white block">Certificado Vencido — Solo Vista Simple en App</span>
+                  <span className="text-[10px] text-red-300/80 leading-tight block mt-0.5">
+                    Visualización disponible únicamente en modo Simple dentro de la app. Descargas en PDF, compartir y auditoría VIP inhabilitadas hasta su renovación.
+                  </span>
+                </div>
               </div>
-              <h3 className="text-lg font-display font-black text-white">CERTIFICADO EXPIRADO</h3>
-              <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
-                La visualización del Score mecánico, la descarga técnica y la auditoría cronológica están inhabilitadas por vencimiento de suscripción técnica.
-              </p>
-              
-              <div className="bg-black/50 p-4 rounded-xl border border-white/5 text-xs font-mono text-slate-400 space-y-1">
-                <div>Placa: <span className="text-amber-400 font-bold">{selectedCar.placa}</span></div>
-                <div>Vehículo: <span>{selectedCar.marca} {selectedCar.modelo}</span></div>
-              </div>
-
-              {/* Botón Rojo Parpadeante al WhatsApp del Admin */}
               <a
                 href={`https://wa.me/${adminPhoneEnv.replace(/[^0-9]/g, "")}?text=${encodeURIComponent(
-                  `Hola Administrador de AutoScore. Deseo pagar la renovación técnica del certificado para el vehículo placa ${selectedCar.placa} y reactivar mi Score de confianza.`
+                  `Hola Administrador de AutoScore. Deseo renovar el certificado para mi vehículo placa ${selectedCar.placa}.`
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 bg-red-500 hover:bg-red-600 text-white font-black py-4 rounded-2xl text-xs transition-all animate-pulse shadow-lg border border-red-500/30 cursor-pointer"
+                className="bg-red-500 hover:bg-red-600 text-white font-black px-3.5 py-2 rounded-xl text-[10px] flex items-center justify-center gap-1.5 shrink-0 transition-all shadow-md cursor-pointer"
               >
-                <Phone className="w-4 h-4" />
-                <span>Pagar Renovación por WhatsApp</span>
+                <Phone className="w-3.5 h-3.5" />
+                <span>Renovar Certificado</span>
               </a>
             </div>
-          ) : (
-            <>
-              {/* ============================================================== */}
-              {/* SUB-VISTA 1: CERTIFICADO OFICIAL DE SALUD MECÁNICA */}
-              {/* ============================================================== */}
-              {activeVehicleTab === "certificado" && (
-                <div className="space-y-4">
-                  {/* Selector de Tipo (Simple / Completo) */}
-                  <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded-xl border border-white/10 no-print text-[11px]">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider pl-1.5 font-bold">Tipo de Certificado:</span>
-                    <div className="flex gap-1.5">
-                      <button
-                        onClick={() => setActiveCertType("simple")}
-                        className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                          activeCertType === "simple"
-                            ? "bg-white/20 text-white border border-white/25 shadow-sm"
-                            : "text-slate-400 hover:text-white"
-                        }`}
-                      >
-                        Simple
-                      </button>
-                      <button
-                        onClick={() => setActiveCertType("completo")}
-                        className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                          activeCertType === "completo"
-                            ? "bg-amber-500/25 text-amber-400 border border-amber-500/35 font-black shadow-sm"
-                            : "text-slate-400 hover:text-amber-400"
-                        }`}
-                      >
-                        Completo VIP
-                      </button>
-                    </div>
-                  </div>
+          )}
 
-                  {/* Contenedor Físico Imprimible del Certificado */}
-                  <div className={`cert-printable-card relative rounded-3xl p-5 border overflow-hidden ${
-                    activeCertType === "completo"
-                      ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
-                      : "bg-gradient-to-b from-slate-900/60 to-slate-950/90 border-white/10 shadow-xl"
-                  }`}>
+          {/* ============================================================== */}
+          {/* SUB-VISTA 1: CERTIFICADO OFICIAL DE SALUD MECÁNICA */}
+          {/* ============================================================== */}
+          {activeVehicleTab === "certificado" && (
+            <div className="space-y-4">
+              {/* Selector de Tipo (Simple / Completo) */}
+              <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded-xl border border-white/10 no-print text-[11px]">
+                <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider pl-1.5 font-bold">Tipo de Certificado:</span>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setActiveCertType("simple")}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                      activeCertType === "simple" || selectedCar.estadoCertificado === "Vencido"
+                        ? "bg-white/20 text-white border border-white/25 shadow-sm"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Simple
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (selectedCar.estadoCertificado === "Vencido") {
+                        alert("El Certificado Completo VIP está inhabilitado porque el certificado está vencido. Solo se permite ver en modo Simple dentro de la app. Renueva la suscripción para reactivar el modo VIP.");
+                        return;
+                      }
+                      setActiveCertType("completo");
+                    }}
+                    disabled={selectedCar.estadoCertificado === "Vencido"}
+                    className={`px-3 py-1 rounded-lg font-bold transition-all ${
+                      selectedCar.estadoCertificado === "Vencido"
+                        ? "opacity-40 text-slate-500 cursor-not-allowed bg-black/40 flex items-center gap-1 border border-white/5"
+                        : activeCertType === "completo"
+                        ? "bg-amber-500/25 text-amber-400 border border-amber-500/35 font-black shadow-sm cursor-pointer"
+                        : "text-slate-400 hover:text-amber-400 cursor-pointer"
+                    }`}
+                    title={selectedCar.estadoCertificado === "Vencido" ? "Bloqueado por vencimiento" : "Certificado Completo VIP"}
+                  >
+                    {selectedCar.estadoCertificado === "Vencido" && <Lock className="w-3 h-3 text-red-400" />}
+                    <span>Completo VIP</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Contenedor Físico Imprimible del Certificado */}
+              <div className={`cert-printable-card relative rounded-3xl p-5 border overflow-hidden ${
+                selectedCar.estadoCertificado !== "Vencido" && activeCertType === "completo"
+                  ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
+                  : selectedCar.estadoCertificado === "Vencido"
+                  ? "bg-gradient-to-b from-slate-900/80 to-slate-950/95 border-red-500/30 shadow-xl"
+                  : "bg-gradient-to-b from-slate-900/60 to-slate-950/90 border-white/10 shadow-xl"
+              }`}>
                     
                     {/* Encabezado Oficial Exclusivo para Impresión / PDF */}
                     <div className="hidden print-only-header">
@@ -1176,16 +1185,35 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                     <div className="flex justify-between items-start mb-5 relative z-10">
                       <div>
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
-                          activeCertType === "completo"
+                          selectedCar.estadoCertificado === "Vencido"
+                            ? "bg-red-500/10 text-red-400 border-red-500/30"
+                            : activeCertType === "completo"
                             ? "bg-amber-400/10 text-amber-400 border-amber-500/20"
                             : "bg-slate-400/10 text-slate-400 border-slate-400/20"
                         }`}>
-                          <Sparkles className="w-3 h-3 text-amber-400" />
-                          <span>Certificado {activeCertType.toUpperCase()}</span>
+                          {selectedCar.estadoCertificado === "Vencido" ? (
+                            <>
+                              <Lock className="w-3 h-3 text-red-400" />
+                              <span>Certificado Simple (VENCIDO)</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              <span>Certificado {activeCertType.toUpperCase()}</span>
+                            </>
+                          )}
                         </span>
-                        <span className="block text-[8px] font-mono text-slate-400 uppercase tracking-widest mt-1">Sello Oficial Inalterable</span>
+                        <span className="block text-[8px] font-mono text-slate-400 uppercase tracking-widest mt-1">
+                          {selectedCar.estadoCertificado === "Vencido" ? "Suscripción Expirada — Solo Vista en App" : "Sello Oficial Inalterable"}
+                        </span>
                       </div>
-                      <Shield className={`w-5 h-5 ${activeCertType === "completo" ? "text-amber-500" : "text-slate-400"}`} />
+                      <Shield className={`w-5 h-5 ${
+                        selectedCar.estadoCertificado === "Vencido"
+                          ? "text-red-500"
+                          : activeCertType === "completo"
+                          ? "text-amber-500"
+                          : "text-slate-400"
+                      }`} />
                     </div>
 
                     {/* Caja de Datos y Score en Grande (cert-data-box) */}
@@ -1409,8 +1437,8 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                     )}
                   </div>
 
-                  {/* OPCIONES DE COMPARTIR Y ACCIONES (no-print) */}
-                  {activeCertType === "completo" && (
+                  {/* OPCIONES DE COMPARTIR Y ACCIONES (no-print) - Bloqueado si está vencido */}
+                  {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
                     <div className="bg-slate-900/40 border border-white/10 p-4 rounded-2xl space-y-3.5 no-print text-left">
                       <div className="flex items-center gap-2 border-b border-white/5 pb-2">
                         <Share2 className="w-4 h-4 text-amber-500" />
@@ -1450,15 +1478,27 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                     </div>
                   )}
 
-                  {/* Botón Imprimir / Guardar en PDF para dueño */}
+                  {/* Botón Imprimir / Guardar en PDF para dueño (Solo si NO está vencido) */}
                   <div className="space-y-2.5 no-print">
-                    <button
-                      onClick={() => window.print()}
-                      className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/25 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
-                    >
-                      <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
-                      <span>Imprimir / Descargar Certificado en PDF</span>
-                    </button>
+                    {selectedCar.estadoCertificado === "Vencido" ? (
+                      <div className="p-3.5 bg-red-950/25 border border-red-500/30 rounded-2xl text-center space-y-1.5">
+                        <div className="flex items-center justify-center gap-1.5 text-red-300 text-xs font-bold">
+                          <Lock className="w-3.5 h-3.5 text-red-400" />
+                          <span>Descarga en PDF e Impresión Inhabilitadas</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 max-w-sm mx-auto leading-normal">
+                          Este certificado está vencido. Solo se permite su visualización en pantalla dentro de la app. Para descargar el documento PDF oficial o compartirlo, renueva tu suscripción.
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => window.print()}
+                        className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/25 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                      >
+                        <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
+                        <span>Imprimir / Descargar Certificado en PDF</span>
+                      </button>
+                    )}
                     
                     <button
                       onClick={() => setActiveVehicleTab("firmas")}
@@ -1759,13 +1799,25 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                   {/* BOTÓN IMPRIMIR / DESCARGAR BITÁCORA DE FIRMAS (no-print) */}
                   <div className="space-y-2.5 no-print">
-                    <button
-                      onClick={() => window.print()}
-                      className="w-full bg-slate-950 hover:bg-slate-900 border border-emerald-500/30 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
-                    >
-                      <Download className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
-                      <span>Imprimir / Descargar Bitácora de Firmas en PDF</span>
-                    </button>
+                    {selectedCar.estadoCertificado === "Vencido" ? (
+                      <div className="p-3 bg-red-950/25 border border-red-500/30 rounded-2xl text-center space-y-1">
+                        <div className="flex items-center justify-center gap-1.5 text-red-300 text-xs font-bold">
+                          <Lock className="w-3.5 h-3.5 text-red-400" />
+                          <span>Descarga de Bitácora Bloqueada por Vencimiento</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400">
+                          Renueva el certificado para descargar o imprimir la bitácora técnica oficial en PDF.
+                        </p>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => window.print()}
+                        className="w-full bg-slate-950 hover:bg-slate-900 border border-emerald-500/30 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                      >
+                        <Download className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
+                        <span>Imprimir / Descargar Bitácora de Firmas en PDF</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setActiveVehicleTab("certificado")}
@@ -1777,8 +1829,6 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                   </div>
                 </div>
               )}
-            </>
-          )}
         </div>
       )}
 

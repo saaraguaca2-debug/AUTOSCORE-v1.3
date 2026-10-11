@@ -306,12 +306,15 @@ function doGet(e) {
         return getCorsResponse({ success: false, error: "Vehículo no registrado en la base de datos de AutoScore." });
       }
       
-      // BLOQUEO COMERCIAL POR IMPAGO: Si el certificado está 'Vencido', frena la respuesta
+      // REGLA COMERCIAL: Si el certificado está 'Vencido', solo se permite visualización simple en la app (sin auditoría VIP)
       if (vehiculo.estadoCertificado === "Vencido") {
         return getCorsResponse({
-          success: false,
-          error: "CERTIFICADO EXPIRADO: El acceso a la hoja de vida de este vehículo está suspendido por vencimiento del certificado. Comunícate con el Administrador para renovarlo.",
-          estadoCertificado: "Vencido"
+          success: true,
+          tipoCertificado: "simple",
+          vehiculo: vehiculo,
+          historial: [],
+          esVencido: true,
+          advertencia: "CERTIFICADO VENCIDO: Solo visualización simple en la app permitida. Descargas, compartir y auditoría VIP inhabilitadas hasta su renovación."
         });
       }
       

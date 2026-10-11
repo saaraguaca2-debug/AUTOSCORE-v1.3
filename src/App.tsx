@@ -39,21 +39,50 @@ export default function App() {
     }
   }, []);
 
-  // Detectar URL predeterminada de la Base de Datos desde variables de entorno
-  const defaultUrl = (
+  // Detectar URL predeterminada de la Base de Datos desde variables de entorno (Secretos)
+  const envUrl = (
     (import.meta as any).env?.VITE_APPSCRIPT_URL || 
     (import.meta as any).env?.NEXT_PUBLIC_APPSCRIPT_URL || 
+    (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL ||
+    (import.meta as any).env?.VITE_GOOGLE_SHEETS_URL ||
+    (import.meta as any).env?.VITE_APP_SCRIPT_URL ||
+    (import.meta as any).env?.VITE_SCRIPT_URL ||
     ""
-  );
+  ).trim();
 
   const [appScriptUrl, setAppScriptUrl] = useState<string>(() => {
-    const saved = localStorage.getItem("autoscore_appscript_url");
-    return saved || defaultUrl;
+    const saved = localStorage.getItem("autoscore_appscript_url")?.trim();
+    const lastEnv = localStorage.getItem("autoscore_last_env_url")?.trim();
+
+    // Si hay una URL en los secretos (env) y es diferente al último secreto registrado o no había guardado previo
+    if (envUrl && envUrl !== lastEnv) {
+      try {
+        localStorage.setItem("autoscore_last_env_url", envUrl);
+        localStorage.setItem("autoscore_appscript_url", envUrl);
+      } catch (e) {}
+      return envUrl;
+    }
+
+    return saved || envUrl;
   });
 
   useEffect(() => {
     localStorage.setItem("autoscore_appscript_url", appScriptUrl);
   }, [appScriptUrl]);
+
+  // Si la URL de los secretos cambia o se detecta una nueva, actualizar automáticamente
+  useEffect(() => {
+    if (envUrl) {
+      const lastEnv = localStorage.getItem("autoscore_last_env_url")?.trim();
+      if (envUrl !== lastEnv) {
+        try {
+          localStorage.setItem("autoscore_last_env_url", envUrl);
+          localStorage.setItem("autoscore_appscript_url", envUrl);
+        } catch (e) {}
+        setAppScriptUrl(envUrl);
+      }
+    }
+  }, [envUrl]);
 
   // Enrutamiento mediante Estado de React (Instantáneo y óptimo para móviles)
   const [currentView, setCurrentView] = useState<VistaActual>("home");
@@ -132,6 +161,7 @@ export default function App() {
         <BaseDatosToggle
           appScriptUrl={appScriptUrl}
           setAppScriptUrl={setAppScriptUrl}
+          envScriptUrl={envUrl}
         />
       </div>
 

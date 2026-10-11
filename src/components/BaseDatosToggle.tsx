@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Wifi, WifiOff, Settings, Check, HelpCircle } from "lucide-react";
+import { Wifi, WifiOff, Settings, Check, HelpCircle, Key, RefreshCw } from "lucide-react";
 
 interface BaseDatosToggleProps {
   appScriptUrl: string;
   setAppScriptUrl: (url: string) => void;
+  envScriptUrl?: string;
 }
 
 export default function BaseDatosToggle({
   appScriptUrl,
   setAppScriptUrl,
+  envScriptUrl,
 }: BaseDatosToggleProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [inputUrl, setInputUrl] = useState(appScriptUrl);
@@ -25,6 +27,17 @@ export default function BaseDatosToggle({
     setTimeout(() => setSaveSuccess(false), 3000);
   };
 
+  const handleUseEnvUrl = () => {
+    if (envScriptUrl) {
+      setAppScriptUrl(envScriptUrl.trim());
+      setInputUrl(envScriptUrl.trim());
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    }
+  };
+
+  const isDifferentFromEnv = Boolean(envScriptUrl && envScriptUrl.trim() !== appScriptUrl.trim());
+
   return (
     <div className="w-full bg-slate-950/40 backdrop-blur-md border-b border-white/5 py-2.5 px-4 sticky top-0 z-50 shadow-md">
       <div className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -36,8 +49,20 @@ export default function BaseDatosToggle({
           </span>
         </div>
 
-        {/* Estado de conexión a Base de Datos */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        {/* Estado de conexión y sincronización con Base de Datos */}
+        <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+          {/* Botón rápido si hay discrepancia con el secreto */}
+          {isDifferentFromEnv && (
+            <button
+              onClick={handleUseEnvUrl}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition-all cursor-pointer animate-pulse"
+              title="Tu proyecto tiene una nueva URL en Secretos. Haz clic para usarla inmediatamente."
+            >
+              <RefreshCw className="w-3 h-3 animate-spin" style={{ animationDuration: "3s" }} />
+              <span>Sincronizar con nuevo Secreto</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowSettings(!showSettings)}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border backdrop-blur-sm transition-all cursor-pointer ${
@@ -85,6 +110,42 @@ export default function BaseDatosToggle({
           <p className="text-xs text-slate-400 mb-3 leading-relaxed">
             Pega aquí la URL Web App de tu base de datos publicada con acceso para &quot;Cualquier persona&quot; para sincronizar propietarios, vehículos y mantenimientos en tu base de datos oficial.
           </p>
+
+          {/* Detección de Secretos del entorno */}
+          {envScriptUrl && (
+            <div className="mb-3 p-2.5 rounded-lg border bg-slate-800/60 border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Key className="w-4 h-4 text-amber-400 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                    URL configurada en los Secretos (VITE_APPSCRIPT_URL):
+                    {appScriptUrl.trim() === envScriptUrl.trim() ? (
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
+                        ✓ Activa
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
+                        Pendiente sincronizar
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 truncate max-w-sm sm:max-w-md">
+                    {envScriptUrl}
+                  </div>
+                </div>
+              </div>
+              {appScriptUrl.trim() !== envScriptUrl.trim() && (
+                <button
+                  type="button"
+                  onClick={handleUseEnvUrl}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3 py-1.5 rounded-md text-xs shrink-0 transition-colors flex items-center gap-1 cursor-pointer self-start sm:self-auto"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  Usar URL de Secretos
+                </button>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSave} className="flex flex-col gap-2">
             <div className="flex gap-2">
