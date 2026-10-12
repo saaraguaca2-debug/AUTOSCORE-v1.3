@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { 
   Lock, Shield, Users, Car, PenTool, BarChart3, CheckCircle2, XCircle, AlertCircle, 
   RefreshCw, UserCheck, Key, Plus, Phone, Hammer, HelpCircle, ArrowRight,
-  Sliders, Settings, Gauge, Save, RotateCcw, Sparkles, Wrench, User
+  Sliders, Settings, Gauge, Save, RotateCcw, Sparkles, Wrench, User,
+  Star, ThumbsUp, ThumbsDown
 } from "lucide-react";
 import { 
   getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig,
@@ -585,18 +586,35 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
                   </div>
                 </div>
 
-                <div className="flex gap-2 pt-1 border-t border-white/5 justify-end">
+                <div className="flex gap-2 pt-1 border-t border-white/5 justify-end items-center">
+                  <button
+                    onClick={() => {
+                      const nuevo = window.prompt(`Ingrese el nuevo AutoScore para el vehículo ${veh.placa} (0 a 100):`, String(veh.score));
+                      if (nuevo !== null) {
+                        const num = Number(nuevo.trim());
+                        if (!isNaN(num) && num >= 0 && num <= 100) {
+                          ejecutarUpdate("actualizarScoreVehiculo", veh.placa, String(num), { nuevoScore: num });
+                        } else {
+                          alert("Puntaje inválido. Ingrese un valor numérico entre 0 y 100.");
+                        }
+                      }
+                    }}
+                    className="text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Ajustar Score ✏️
+                  </button>
+
                   {veh.estadoCertificado !== "Activo" ? (
                     <button
                       onClick={() => ejecutarUpdate("actualizarVehiculo", veh.placa, "Activo")}
-                      className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-2.5 py-1 rounded-lg"
+                      className="text-[10px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-2.5 py-1 rounded-lg cursor-pointer"
                     >
                       Renovar / Activar Certificado
                     </button>
                   ) : (
                     <button
                       onClick={() => ejecutarUpdate("actualizarVehiculo", veh.placa, "Vencido")}
-                      className="text-[10px] font-bold bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 px-2.5 py-1 rounded-lg"
+                      className="text-[10px] font-bold bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 px-2.5 py-1 rounded-lg cursor-pointer"
                     >
                       Marcar Expirado ❌
                     </button>
@@ -730,6 +748,23 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
                           <span>+{mec.telefono}</span>
                         </span>
                       )}
+                      {/* Calidad Técnica Oficial */}
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                          (mec.porcentajeCalidad || 100) >= 90
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                            : (mec.porcentajeCalidad || 100) >= 75
+                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            : "bg-red-500/10 text-red-400 border border-red-500/20"
+                        }`}>
+                          <Star className="w-2.5 h-2.5 fill-current" />
+                          <span>{mec.porcentajeCalidad || 100}% Calidad Técnica</span>
+                        </span>
+                        <div className="flex items-center gap-1.5 font-mono text-[9px]">
+                          <span className="text-emerald-400">👍 {mec.totalPositivas || 0}</span>
+                          <span className="text-red-400">👎 {mec.totalNegativas || 0}</span>
+                        </div>
+                      </div>
                     </div>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                       mec.estado === "Activo"

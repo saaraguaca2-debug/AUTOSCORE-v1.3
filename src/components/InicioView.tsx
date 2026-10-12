@@ -1,5 +1,5 @@
 import React from "react";
-import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle, UserPlus, Lock } from "lucide-react";
+import { Shield, Car, PenTool, BookOpen, Clock, Zap, ArrowRight, CheckCircle, UserPlus, Lock, Star } from "lucide-react";
 import { VistaActual } from "../types";
 
 interface InicioViewProps {
@@ -122,6 +122,24 @@ export default function InicioView({ onNavigate, solicitudesCount = 0 }: InicioV
             </div>
           </div>
           <ArrowRight className="w-5 h-5 text-slate-500 group-hover:translate-x-1 transition-transform" />
+        </button>
+
+        {/* Acceso al Directorio Oficial de Calidad Técnica de Talleres */}
+        <button
+          onClick={() => onNavigate("usuario")}
+          className="w-full group bg-slate-900/60 hover:bg-slate-900 border border-amber-500/30 hover:border-amber-500/50 text-white font-bold py-3.5 px-5 rounded-2xl active:scale-[0.98] transition-all duration-200 flex items-center justify-between shadow-lg backdrop-blur-sm cursor-pointer"
+          id="btn-directorio-inicio"
+        >
+          <div className="flex items-center gap-3.5 text-left">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+              <Star className="w-5 h-5 fill-amber-400/20" />
+            </div>
+            <div>
+              <span className="block text-sm font-extrabold leading-tight text-white">Directorio de Calidad Técnica</span>
+              <span className="block text-[11px] font-normal text-amber-400/80">Ranking de talleres y opiniones de propietarios</span>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-amber-400 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
 

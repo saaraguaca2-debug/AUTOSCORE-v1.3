@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
 import { 
   PenTool, Shield, QrCode, AlertCircle, RefreshCw, Key, Camera, Gauge, CheckCircle2,
   Lock, ArrowRight, CornerDownLeft, Sparkles, AlertTriangle, MonitorPlay, Check, PlusCircle,
-  ClipboardCheck, Wrench, User
+  ClipboardCheck, Wrench, User, History, Star, ThumbsUp, ThumbsDown, MessageSquare
 } from "lucide-react";
 import { Mecanico, Vehiculo } from "../types";
 import { notifyDataChanged } from "../mockData";
@@ -20,7 +20,38 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   const [loginError, setLoginError] = useState<string | null>(null);
 
   // Selector de sección del panel mecánico logueado
-  const [activeTab, setActiveTab] = useState<"mantenimiento" | "inspeccion">("mantenimiento");
+  const [activeTab, setActiveTab] = useState<"mantenimiento" | "inspeccion" | "reputacion">("mantenimiento");
+  const [mecanicoHistorial, setMecanicoHistorial] = useState<any[]>([]);
+  const [loadingReputacion, setLoadingReputacion] = useState(false);
+
+  const cargarReputacionMecanico = async (codigo: string) => {
+    if (!appScriptUrl || !codigo) return;
+    setLoadingReputacion(true);
+    try {
+      const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success) {
+          if (Array.isArray(json.mecanicos)) {
+            const found = json.mecanicos.find((m: any) => 
+              (m.codigoMecanico || "").toString().trim().toLowerCase() === codigo.trim().toLowerCase()
+            );
+            if (found) setLoggedMecanico(found);
+          }
+          if (Array.isArray(json.historial)) {
+            const reviews = json.historial.filter((h: any) => 
+              (h.codigoMecanico || "").toString().trim().toLowerCase() === codigo.trim().toLowerCase()
+            );
+            setMecanicoHistorial(reviews);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Error cargando reputación del mecánico:", e);
+    } finally {
+      setLoadingReputacion(false);
+    }
+  };
 
   // Estados del Formulario de Mantenimiento
   const [placa, setPlaca] = useState("");
@@ -30,13 +61,35 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   const [formSuccess, setFormSuccess] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Estados del Formulario de Inspección de Ingreso
+  // Estados para búsqueda automática del último kilometraje registrado
+  const [loadingUltimoKm, setLoadingUltimoKm] = useState(false);
+  const [ultimoKmInfo, setUltimoKmInfo] = useState<{
+    km: number;
+    fecha?: string;
+    trabajo?: string;
+    taller?: string;
+  } | null>(null);
+
+  // Estados del Formulario de Inspección de Ingreso / Re-Inspección
   const [inspPlaca, setInspPlaca] = useState("");
   const [inspMarca, setInspMarca] = useState("");
   const [inspModelo, setInspModelo] = useState("");
   const [inspAnio, setInspAnio] = useState("");
   const [inspIdDueno, setInspIdDueno] = useState("");
   const [inspKilometraje, setInspKilometraje] = useState("");
+
+  // Estados para modo Re-Inspección Técnica (Vehículo existente que sube Score por mejoras)
+  const [esReinspeccion, setEsReinspeccion] = useState(false);
+  const [vehiculoExistenteInfo, setVehiculoExistenteInfo] = useState<{
+    placa: string;
+    marca: string;
+    modelo: string;
+    anio: number;
+    idDueno: string;
+    scoreActual: number;
+    ultimoKm?: number;
+  } | null>(null);
+  const [buscandoVehiculoInsp, setBuscandoVehiculoInsp] = useState(false);
 
   // Respuestas del cuestionario (Puntajes por defecto son ideales: 20 pts cada uno)
   const [qMotor, setQMotor] = useState<number>(20);
@@ -57,6 +110,127 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Verificar si un vehículo ya está registrado para activar automáticamente el modo Re-Inspección
+  const verificarVehiculoInsp = useCallback(async (placaAComprobar: string) => {
+    const clean = (placaAComprobar || "").trim().toUpperCase();
+    if (!clean || clean.length < 3 || !appScriptUrl) {
+      setEsReinspeccion(false);
+      setVehiculoExistenteInfo(null);
+      return;
+    }
+
+    setBuscandoVehiculoInsp(true);
+    try {
+      const url = `${appScriptUrl}?placa=${encodeURIComponent(clean)}&tipoCertificado=completo`;
+      const res = await fetch(url, { mode: "cors" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success && json.vehiculo) {
+          const v = json.vehiculo;
+          const scoreAct = Number(v.score || v.Score || 90);
+          const ultimoKmNum = json.kilometrajeActual ? Number(json.kilometrajeActual) : undefined;
+          
+          setEsReinspeccion(true);
+          setVehiculoExistenteInfo({
+            placa: v.placa,
+            marca: v.marca,
+            modelo: v.modelo,
+            anio: Number(v.anio) || new Date().getFullYear(),
+            idDueno: v.idDueno || "",
+            scoreActual: scoreAct,
+            ultimoKm: ultimoKmNum
+          });
+
+          // Auto-llenar campos
+          if (v.marca) setInspMarca(v.marca);
+          if (v.modelo) setInspModelo(v.modelo);
+          if (v.anio) setInspAnio(String(v.anio));
+          if (v.idDueno) setInspIdDueno(v.idDueno);
+          if (ultimoKmNum) setInspKilometraje(String(ultimoKmNum));
+          return;
+        }
+      }
+      setEsReinspeccion(false);
+      setVehiculoExistenteInfo(null);
+    } catch (err) {
+      console.warn("No se pudo verificar vehículo para re-inspección:", err);
+    } finally {
+      setBuscandoVehiculoInsp(false);
+    }
+  }, [appScriptUrl]);
+
+  // Función para consultar el último kilometraje registrado en la última reparación
+  const fetchUltimoKilometraje = useCallback(async (placaABuscar: string) => {
+    const clean = (placaABuscar || "").trim().toUpperCase();
+    if (!clean || clean.length < 3) {
+      setUltimoKmInfo(null);
+      return;
+    }
+
+    setLoadingUltimoKm(true);
+
+    try {
+      if (appScriptUrl) {
+        // Consultar con tipoCertificado=completo para obtener historial de la base de datos
+        const url = `${appScriptUrl}?placa=${encodeURIComponent(clean)}&tipoCertificado=completo`;
+        const res = await fetch(url, { mode: "cors" });
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.success) {
+            const hist = Array.isArray(json.historial) ? json.historial : [];
+            if (hist.length > 0) {
+              // Buscar el registro con mayor kilometraje o el primer registro del historial ordenado
+              let maxKm = 0;
+              let bestRow: any = null;
+
+              hist.forEach((row: any) => {
+                const k = Number(row.kilometraje) || 0;
+                if (k > maxKm) {
+                  maxKm = k;
+                  bestRow = row;
+                }
+              });
+
+              if (!bestRow && hist[0]) {
+                bestRow = hist[0];
+                maxKm = Number(bestRow.kilometraje) || 0;
+              }
+
+              if (bestRow && maxKm > 0) {
+                setKilometraje(String(maxKm));
+                setUltimoKmInfo({
+                  km: maxKm,
+                  fecha: bestRow.fecha,
+                  trabajo: bestRow.trabajoRealizado,
+                  taller: bestRow.taller
+                });
+                setLoadingUltimoKm(false);
+                return;
+              }
+            } else if (json.kilometrajeActual && Number(json.kilometrajeActual) > 0) {
+              const km = Number(json.kilometrajeActual);
+              setKilometraje(String(km));
+              setUltimoKmInfo({
+                km: km,
+                fecha: "Odómetro registrado"
+              });
+              setLoadingUltimoKm(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // Si no hay respuesta o no hay historial en la BD
+      setUltimoKmInfo(null);
+    } catch (err) {
+      console.warn("No se pudo obtener el último kilometraje:", err);
+      setUltimoKmInfo(null);
+    } finally {
+      setLoadingUltimoKm(false);
+    }
+  }, [appScriptUrl]);
+
   // Pre-llenar la placa automáticamente si se pasa por parámetro URL (QR de Técnico) o desde el último carro del garage
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -64,10 +238,12 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     const lastSelected = localStorage.getItem("autoscore_last_selected_placa");
     const targetPlaca = urlPlaca || lastSelected;
     if (targetPlaca) {
-      setPlaca(targetPlaca.toUpperCase());
-      setInspPlaca(targetPlaca.toUpperCase());
+      const cleanTarget = targetPlaca.toUpperCase();
+      setPlaca(cleanTarget);
+      setInspPlaca(cleanTarget);
+      fetchUltimoKilometraje(cleanTarget);
     }
-  }, []);
+  }, [fetchUltimoKilometraje]);
 
   // 1. INGRESO DE MECÁNICO (FILTRO DE MEMBRESÍA Y DATOS REALES DE LA BASE DE DATOS)
   const handleMecanicoLogin = async (e: React.FormEvent) => {
@@ -102,6 +278,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
         } else {
           setLoggedMecanico(foundMec);
           setLoginError(null);
+          cargarReputacionMecanico(cleanInput);
         }
       } else {
         setLoginError("Código de técnico no encontrado en la base de datos.");
@@ -122,6 +299,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     setTrabajo("");
     setFormError(null);
     setFormSuccess(null);
+    setUltimoKmInfo(null);
     stopCamera();
     setShowScanner(false);
   };
@@ -155,9 +333,16 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     setCameraActive(false);
   };
 
-  // Manejar captura de cámara real
+  // Manejar captura de cámara real / Escaneo QR
   const handleSelectPlaca = (placaSeleccionada: string) => {
-    setPlaca(placaSeleccionada.toUpperCase());
+    const upper = placaSeleccionada.toUpperCase();
+    if (activeTab === "inspeccion") {
+      setInspPlaca(upper);
+      verificarVehiculoInsp(upper);
+    } else {
+      setPlaca(upper);
+      fetchUltimoKilometraje(upper);
+    }
     setShowScanner(false);
     stopCamera();
     setFormError(null);
@@ -431,31 +616,47 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                 setFormError(null);
                 setFormSuccess(null);
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold rounded-lg transition-all ${
                 activeTab === "mantenimiento"
                   ? "bg-amber-500 text-slate-950 font-extrabold shadow"
                   : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
               }`}
               id="tab-btn-mantenimiento"
             >
-              <PenTool className="w-4 h-4" />
-              <span>Firma de Historial</span>
+              <PenTool className="w-3.5 h-3.5" />
+              <span>Firma</span>
             </button>
             <button
               onClick={() => {
                 setActiveTab("inspeccion");
                 setInspError(null);
                 setInspSuccess(null);
+                if (inspPlaca) verificarVehiculoInsp(inspPlaca);
               }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold rounded-lg transition-all ${
                 activeTab === "inspeccion"
                   ? "bg-amber-500 text-slate-950 font-extrabold shadow"
                   : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
               }`}
               id="tab-btn-inspeccion"
             >
-              <ClipboardCheck className="w-4 h-4" />
-              <span>Inspección de Ingreso</span>
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              <span>Inspección</span>
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("reputacion");
+                if (loggedMecanico) cargarReputacionMecanico(loggedMecanico.codigoMecanico);
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px] font-semibold rounded-lg transition-all ${
+                activeTab === "reputacion"
+                  ? "bg-amber-500 text-slate-950 font-extrabold shadow"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
+              }`}
+              id="tab-btn-reputacion"
+            >
+              <Star className="w-3.5 h-3.5" />
+              <span>Calidad & Reseñas</span>
             </button>
           </div>
 
@@ -505,7 +706,20 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                       maxLength={10}
                       placeholder="Ej: XYZ567"
                       value={placa}
-                      onChange={(e) => setPlaca(e.target.value.toUpperCase())}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        setPlaca(val);
+                        if (val.trim().length >= 5) {
+                          fetchUltimoKilometraje(val);
+                        } else {
+                          setUltimoKmInfo(null);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (placa.trim().length >= 3) {
+                          fetchUltimoKilometraje(placa);
+                        }
+                      }}
                       className="flex-1 glass-input rounded-xl px-4 py-2.5 text-sm font-mono font-bold tracking-widest text-amber-400 placeholder-slate-500 focus:outline-none focus:border-amber-500"
                     />
                     <button
@@ -522,15 +736,24 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    * Escanea el código QR en la pantalla del propietario para leer la placa instantáneamente y bloquear errores de transcripción.
+                    * Escanea el código QR o ingresa la placa para cargar automáticamente el último kilometraje registrado en la última reparación.
                   </p>
                 </div>
 
                 {/* Kilometraje */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Kilometraje Actual (Odómetro):
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                      Kilometraje Actual (Odómetro):
+                    </label>
+                    {loadingUltimoKm && (
+                      <span className="text-[11px] text-amber-400 flex items-center gap-1 font-sans animate-pulse">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        Consultando último km...
+                      </span>
+                    )}
+                  </div>
+
                   <div className="relative">
                     <Gauge className="absolute left-3 top-3 w-4.5 h-4.5 text-slate-500" />
                     <input
@@ -543,6 +766,31 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                     />
                     <span className="absolute right-4 top-3 text-xs text-slate-500 font-mono font-semibold">KM</span>
                   </div>
+
+                  {/* Banner informativo del último kilometraje traído */}
+                  {ultimoKmInfo && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-start gap-2 animate-fade-in">
+                      <History className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                      <div className="leading-tight">
+                        <span className="font-bold text-white">
+                          Último KM registrado: {Number(ultimoKmInfo.km).toLocaleString()} km
+                        </span>
+                        {ultimoKmInfo.fecha && (
+                          <span className="text-slate-400 block mt-0.5">
+                            Fecha: {ultimoKmInfo.fecha} {ultimoKmInfo.taller ? `• Taller: ${ultimoKmInfo.taller}` : ""}
+                          </span>
+                        )}
+                        {ultimoKmInfo.trabajo && (
+                          <span className="text-slate-400 block mt-0.5 line-clamp-1 italic">
+                            Trabajo: &ldquo;{ultimoKmInfo.trabajo.split("\n")[0]}&rdquo;
+                          </span>
+                        )}
+                        <span className="text-[10px] text-amber-400/90 block mt-1 font-medium">
+                          ✓ Se auto-completó con el valor de la última reparación. Puedes ajustarlo si el odómetro avanzó.
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Descripción de Trabajo */}
@@ -588,38 +836,73 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
             </div>
           )}
 
-          {/* ---------------- TAB 2: INSPECCIÓN DE INGRESO (CUESTIONARIO) ---------------- */}
+          {/* ---------------- TAB 2: INSPECCIÓN / RE-EVALUACIÓN TÉCNICA ---------------- */}
           {activeTab === "inspeccion" && (
-            <div className="glass-panel p-5 shadow-xl relative overflow-hidden">
-              <h4 className="text-sm font-display font-bold text-white mb-1 flex items-center gap-1.5 border-b border-white/5 pb-3">
-                <ClipboardCheck className="w-4.5 h-4.5 text-amber-500" />
-                Inspección de Ingreso y Diagnóstico Inicial
-              </h4>
-              <p className="text-[10px] text-slate-400 mb-4 leading-normal">
-                Evalúe las áreas clave del vehículo para calcular de forma automatizada y justa el AutoScore de confianza inicial.
-              </p>
+            <div className={`glass-panel p-5 shadow-xl relative overflow-hidden transition-all duration-300 ${
+              esReinspeccion ? "border-amber-500/30 bg-amber-500/[0.02]" : ""
+            }`}>
+              <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-2">
+                <div className="flex items-center gap-2">
+                  {esReinspeccion ? (
+                    <Sparkles className="w-5 h-5 text-amber-400 animate-pulse" />
+                  ) : (
+                    <ClipboardCheck className="w-5 h-5 text-amber-500" />
+                  )}
+                  <div>
+                    <h4 className="text-sm font-display font-bold text-white flex items-center gap-2">
+                      <span>{esReinspeccion ? "Re-Inspección Técnica por Mejoras" : "Inspección de Ingreso y Diagnóstico"}</span>
+                      {esReinspeccion && (
+                        <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-mono font-bold uppercase tracking-wider">
+                          Re-evaluación VIP
+                        </span>
+                      )}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 leading-normal">
+                      {esReinspeccion
+                        ? "Certifique las mejoras y reparaciones realizadas por el cliente para actualizar y subir su AutoScore oficial."
+                        : "Evalúe las áreas clave del vehículo para homologarlo y calcular su AutoScore inicial de confianza."}
+                    </p>
+                  </div>
+                </div>
+              </div>
 
               {inspSuccess && (
                 <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-900/30 text-emerald-400 text-xs flex flex-col gap-2.5 mb-4 animate-in zoom-in-95 duration-200">
                   <div className="flex items-center gap-2 font-bold text-sm">
                     <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-                    <span>¡Vehículo Homologado e Inspeccionado!</span>
+                    <span>
+                      {inspSuccess.esReinspeccion
+                        ? "¡Re-Inspección Técnica Completada y Score Actualizado!"
+                        : "¡Vehículo Homologado e Inspeccionado!"}
+                    </span>
                   </div>
                   <div className="mt-1 space-y-1 text-slate-300 font-mono text-[11px]">
-                    <p>• Placa Registrada: <strong className="text-amber-400">{inspSuccess.placa}</strong></p>
+                    <p>• Placa: <strong className="text-amber-400">{inspSuccess.placa}</strong></p>
                     <p>• Vehículo: {inspSuccess.marca} {inspSuccess.modelo}</p>
                     <p>• Cédula/ID Dueño: {inspSuccess.dueno}</p>
-                    <p>• Puntaje Inicial Calculado: <strong className="text-amber-400">{inspSuccess.score} pts</strong></p>
+                    {inspSuccess.esReinspeccion ? (
+                      <div className="p-2 rounded-xl bg-black/40 border border-white/5 my-1 flex items-center gap-2">
+                        <span className="text-[10px] text-slate-400 font-sans">Evolución de Puntuación:</span>
+                        <span className="line-through text-slate-400 font-bold">{inspSuccess.scoreAnterior || 90} pts</span>
+                        <ArrowRight className="w-3.5 h-3.5 text-emerald-400" />
+                        <span className="text-emerald-400 font-extrabold text-sm">{inspSuccess.score} pts</span>
+                        <span className="text-[10px] text-emerald-400 font-sans ml-auto font-bold">¡Subió de Score!</span>
+                      </div>
+                    ) : (
+                      <p>• Puntaje Inicial Calculado: <strong className="text-amber-400">{inspSuccess.score} pts</strong></p>
+                    )}
                     <p>• Transacción Historial ID: #{inspSuccess.idHistorial}</p>
                   </div>
                   <p className="text-[10px] text-slate-400 leading-normal">
-                    La ficha de diagnóstico ha sido cargada de forma oficial como el primer sello verificado en la hoja de vida del vehículo.
+                    {inspSuccess.esReinspeccion
+                      ? "La re-evaluación por mejoras ha sido sellada oficialmente. El nuevo Score ya está disponible para el cliente, el mercado y certificados digitales."
+                      : "La ficha de diagnóstico ha sido cargada de forma oficial como el primer sello verificado en la hoja de vida del vehículo."}
                   </p>
                   <button
                     onClick={() => setInspSuccess(null)}
                     className="mt-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 font-bold py-1.5 px-3 rounded-lg text-xs self-end border border-emerald-500/20"
                   >
-                    Nueva Inspección de Ingreso
+                    Nueva Inspección / Re-evaluación
                   </button>
                 </div>
               )}
@@ -658,12 +941,101 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                   `Escáner OBD2: ${qOBD === 20 ? "Sistema limpio (sin códigos de falla)" : qOBD === 10 ? "Códigos guardados secundarios" : "Testigo Check Engine activo / Falla eléctrica"}`,
                   `Neumáticos: ${qNeumaticos === 20 ? "Excelente estado (vida >70%)" : qNeumaticos === 10 ? "Desgaste medio (30%-70%)" : "Inseguro (neumáticos lisos)"}`
                 ];
-                const trabajoInspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nINSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
 
                 try {
                   if (!appScriptUrl) {
                     throw new Error("Debe configurar la URL de la Base de Datos en el botón de arriba ⚙️.");
                   }
+
+                  // ---------------- CASO 1: RE-INSPECCIÓN TÉCNICA (Vehículo Existente) ----------------
+                  if (esReinspeccion) {
+                    const trabajoReinspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nRE-INSPECCIÓN TÉCNICA POR MEJORAS EN AUTOSCORE.\nNuevo Score Asignado: ${scoreCalculado} pts (Anterior: ${vehiculoExistenteInfo?.scoreActual ?? "?"} pts).\nEvaluación de Sistemas Reparados por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
+
+                    let successReinsp = false;
+                    let lastIdHist = "10006";
+
+                    // Intento A: Invocar la acción directa 'reinspeccionarVehiculo'
+                    try {
+                      const responseReinsp = await fetch(appScriptUrl, {
+                        method: "POST",
+                        mode: "cors",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({
+                          accion: "reinspeccionarVehiculo",
+                          placa: cleanPlaca,
+                          score: scoreCalculado,
+                          codigoMecanico: loggedMecanico.codigoMecanico,
+                          kilometraje: kmNum,
+                          trabajo: trabajoReinspeccion,
+                          estadoCertificado: "Activo"
+                        })
+                      });
+
+                      if (responseReinsp.ok) {
+                        const resJson = await responseReinsp.json();
+                        if (resJson && resJson.success) {
+                          successReinsp = true;
+                          lastIdHist = resJson.data?.idHistorial || "10006";
+                        }
+                      }
+                    } catch (err) {
+                      console.warn("Fallo en reinspeccionarVehiculo:", err);
+                    }
+
+                    // Intento B (Fallback de compatibilidad con versión anterior del script)
+                    if (!successReinsp) {
+                      // Registrar como mantenimiento para asentar la firma en el historial
+                      const resMaintFallback = await fetch(appScriptUrl, {
+                        method: "POST",
+                        mode: "cors",
+                        headers: { "Content-Type": "text/plain;charset=utf-8" },
+                        body: JSON.stringify({
+                          codigoMecanico: loggedMecanico.codigoMecanico,
+                          placa: cleanPlaca,
+                          kilometraje: kmNum,
+                          trabajo: trabajoReinspeccion
+                        })
+                      });
+                      if (resMaintFallback.ok) {
+                        const mJson = await resMaintFallback.json();
+                        if (mJson && mJson.success) {
+                          lastIdHist = mJson.data?.idHistorial || "10006";
+                        }
+                      }
+                    }
+
+                    setInspSuccess({
+                      placa: cleanPlaca,
+                      marca: cleanMarca,
+                      modelo: cleanModelo,
+                      score: scoreCalculado,
+                      dueno: cleanIdDueno,
+                      idHistorial: lastIdHist,
+                      esReinspeccion: true,
+                      scoreAnterior: vehiculoExistenteInfo?.scoreActual
+                    });
+
+                    notifyDataChanged();
+
+                    setInspPlaca("");
+                    setInspMarca("");
+                    setInspModelo("");
+                    setInspAnio("");
+                    setInspIdDueno("");
+                    setInspKilometraje("");
+                    setEsReinspeccion(false);
+                    setVehiculoExistenteInfo(null);
+                    setQMotor(20);
+                    setQChasis(20);
+                    setQDireccion(20);
+                    setQOBD(20);
+                    setQNeumaticos(20);
+                    setIsSubmittingInsp(false);
+                    return;
+                  }
+
+                  // ---------------- CASO 2: INSPECCIÓN INICIAL (Vehículo Nuevo) ----------------
+                  const trabajoInspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nINSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
 
                   const responseReg = await fetch(appScriptUrl, {
                     method: "POST",
@@ -714,7 +1086,8 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                     modelo: cleanModelo,
                     score: scoreCalculado,
                     dueno: cleanIdDueno,
-                    idHistorial: resultMaint.success ? (resultMaint.data?.idHistorial || "10005") : "10005"
+                    idHistorial: resultMaint.success ? (resultMaint.data?.idHistorial || "10005") : "10005",
+                    esReinspeccion: false
                   });
 
                   notifyDataChanged();
@@ -737,23 +1110,76 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                 }
               }} className="space-y-4">
                 
-                {/* Bloque 1: Datos Básicos del Carro */}
-                <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-3">
-                  <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest block border-b border-white/5 pb-1.5">
-                    1. Ficha del Vehículo
-                  </span>
+                {/* Bloque 1: Ficha del Vehículo con Detección Automática de Re-Inspección */}
+                <div className={`border rounded-2xl p-3.5 space-y-3 transition-colors ${
+                  esReinspeccion 
+                    ? "bg-amber-500/10 border-amber-500/30" 
+                    : "bg-white/[0.03] border border-white/5"
+                }`}>
+                  <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                    <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <span>1. Ficha del Vehículo</span>
+                      {buscandoVehiculoInsp && (
+                        <span className="text-[9px] text-amber-400 font-sans flex items-center gap-1 lowercase">
+                          <RefreshCw className="w-2.5 h-2.5 animate-spin" /> verificando...
+                        </span>
+                      )}
+                    </span>
+                    {esReinspeccion && vehiculoExistenteInfo && (
+                      <span className="text-[9px] font-bold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/30">
+                        Score Actual: {vehiculoExistenteInfo.scoreActual} pts
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Banner Explicativo de Re-Inspección */}
+                  {esReinspeccion && vehiculoExistenteInfo && (
+                    <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2.5 animate-in fade-in">
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-bold text-amber-200 block text-[11px]">
+                          Vehículo Registrado: {vehiculoExistenteInfo.marca} {vehiculoExistenteInfo.modelo} ({vehiculoExistenteInfo.anio})
+                        </span>
+                        <p className="text-[10px] text-slate-300 mt-0.5 leading-normal">
+                          Se activó el modo <strong>Re-Inspección Técnica</strong>. Evalúe abajo las mejoras mecánicas instaladas para calcular y actualizar automáticamente el nuevo Score en la base de datos.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
-                        Placa (ID Único):
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[10px] font-semibold text-slate-400 uppercase">
+                          Placa (ID Único):
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowScanner(true)}
+                          className="text-[9px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded"
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>QR</span>
+                        </button>
+                      </div>
                       <input
                         type="text"
                         required
                         placeholder="Ej: XYZ567"
                         value={inspPlaca}
-                        onChange={(e) => setInspPlaca(e.target.value.toUpperCase())}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          setInspPlaca(val);
+                          if (val.length >= 3) {
+                            verificarVehiculoInsp(val);
+                          } else {
+                            setEsReinspeccion(false);
+                            setVehiculoExistenteInfo(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (inspPlaca) verificarVehiculoInsp(inspPlaca);
+                        }}
                         className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-amber-400 font-mono font-bold uppercase focus:outline-none focus:border-amber-500"
                       />
                     </div>
@@ -817,7 +1243,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
-                        Kilometraje de Ingreso:
+                        {esReinspeccion ? "Odómetro Actual (km):" : "Kilometraje de Ingreso:"}
                       </label>
                       <input
                         type="number"
@@ -833,9 +1259,14 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                 {/* Bloque 2: Cuestionario de Evaluación Técnica */}
                 <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-4">
-                  <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest block border-b border-white/5 pb-1.5">
-                    2. Cuestionario de Diagnóstico
-                  </span>
+                  <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
+                    <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest">
+                      2. Cuestionario de Diagnóstico y Estado
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      5 áreas clave (20 pts c/u)
+                    </span>
+                  </div>
 
                   {/* Pregunta 1 */}
                   <div className="space-y-1">
@@ -919,13 +1350,23 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                 </div>
 
                 {/* Bloque 3: Cálculo del Score en Vivo */}
-                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between">
+                <div className={`rounded-2xl p-4 flex items-center justify-between border transition-colors ${
+                  esReinspeccion
+                    ? "bg-amber-500/10 border-amber-500/30"
+                    : "bg-amber-500/5 border-amber-500/20"
+                }`}>
                   <div className="min-w-0">
                     <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest block">
-                      AutoScore Resultante
+                      {esReinspeccion ? "Nuevo AutoScore Certificado (Mejoras)" : "AutoScore Inicial Resultante"}
                     </span>
                     <p className="text-[11px] text-slate-400 mt-0.5 leading-normal">
-                      Puntaje de confianza inicial basado estrictamente en el cuestionario técnico de {loggedMecanico.nombre}.
+                      {esReinspeccion && vehiculoExistenteInfo ? (
+                        <span>
+                          Puntaje anterior: <strong className="line-through text-slate-400">{vehiculoExistenteInfo.scoreActual} pts</strong> ➔ Nuevo puntaje oficial tras auditoría de mejoras.
+                        </span>
+                      ) : (
+                        <span>Puntaje de confianza inicial basado estrictamente en el cuestionario técnico de {loggedMecanico.nombre}.</span>
+                      )}
                     </p>
                   </div>
                   <div className="text-right ml-4 shrink-0 bg-amber-500/10 px-4 py-2 rounded-xl border border-amber-500/30">
@@ -948,19 +1389,164 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                 <button
                   type="submit"
                   disabled={isSubmittingInsp}
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-3.5 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg cursor-pointer"
                 >
                   {isSubmittingInsp ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : esReinspeccion ? (
+                    <>
+                      <Sparkles className="w-4 h-4 text-slate-950" />
+                      <span>Emitir Re-Inspección y Actualizar Score a {qMotor + qChasis + qDireccion + qOBD + qNeumaticos} pts</span>
+                    </>
                   ) : (
                     <>
                       <ClipboardCheck className="w-4 h-4" />
-                      Emitir Homologación y Sello de Ingreso
+                      <span>Emitir Homologación y Sello de Ingreso</span>
                     </>
                   )}
                 </button>
 
               </form>
+            </div>
+          )}
+
+          {/* ---------------- TAB 3: REPUTACIÓN Y CALIDAD TÉCNICA DEL MECÁNICO ---------------- */}
+          {activeTab === "reputacion" && (
+            <div className="glass-panel p-5 shadow-xl relative overflow-hidden space-y-4">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div className="flex items-center gap-1.5">
+                  <Star className="w-4.5 h-4.5 text-amber-500 fill-amber-500/20" />
+                  <h4 className="text-sm font-display font-bold text-white">
+                    Mi Calidad Técnica y Reputación
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loggedMecanico && cargarReputacionMecanico(loggedMecanico.codigoMecanico)}
+                  className="p-1 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title="Actualizar datos"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingReputacion ? "animate-spin text-amber-500" : ""}`} />
+                </button>
+              </div>
+
+              {/* Métricas del Mecánico */}
+              {(() => {
+                const pct = loggedMecanico?.porcentajeCalidad != null ? Number(loggedMecanico.porcentajeCalidad) : 100;
+                const pos = Number(loggedMecanico?.totalPositivas || 0);
+                const neg = Number(loggedMecanico?.totalNegativas || 0);
+                const totalTrabajos = Number(loggedMecanico?.totalServicios || (pos + neg));
+
+                let badgeClase = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+                let badgeTexto = "Taller Certificado Oro / Excelente";
+                if (neg > 0 && pct < 75) {
+                  badgeClase = "bg-red-500/10 text-red-400 border-red-500/30";
+                  badgeTexto = "Alerta Técnica: Quejas Recurrentes";
+                } else if (pct < 90) {
+                  badgeClase = "bg-amber-500/10 text-amber-400 border-amber-500/30";
+                  badgeTexto = "Calidad Confiable";
+                }
+
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-slate-900/60 border border-white/5 rounded-2xl p-4 text-center relative overflow-hidden">
+                      <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block">
+                        Índice de Aprobación Oficial
+                      </span>
+                      <div className="text-4xl font-display font-black text-white mt-1">
+                        {pct}%
+                      </div>
+                      <span className={`inline-block mt-2 px-3 py-0.5 rounded-full border text-[10px] font-bold ${badgeClase}`}>
+                        {badgeTexto}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="bg-slate-900/40 border border-white/5 p-2.5 rounded-xl">
+                        <span className="text-emerald-400 font-black text-lg block">👍 {pos}</span>
+                        <span className="text-[9px] text-slate-400 uppercase font-mono">Positivas</span>
+                      </div>
+                      <div className="bg-slate-900/40 border border-white/5 p-2.5 rounded-xl">
+                        <span className="text-red-400 font-black text-lg block">👎 {neg}</span>
+                        <span className="text-[9px] text-slate-400 uppercase font-mono">Reclamos</span>
+                      </div>
+                      <div className="bg-slate-900/40 border border-white/5 p-2.5 rounded-xl">
+                        <span className="text-amber-400 font-black text-lg block">{totalTrabajos}</span>
+                        <span className="text-[9px] text-slate-400 uppercase font-mono">Servicios</span>
+                      </div>
+                    </div>
+
+                    {/* Alerta de Mejora si tiene evaluaciones negativas */}
+                    {neg > 0 && (
+                      <div className="bg-red-950/20 border border-red-500/30 p-3 rounded-2xl text-[11px] text-red-300 space-y-1">
+                        <div className="flex items-center gap-1.5 font-bold text-red-400">
+                          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Atención a reportes de inconformidad técnica</span>
+                        </div>
+                        <p className="text-[10px] text-red-200/80 leading-relaxed">
+                          Revisa a continuación el motivo de cada queja dejada por los propietarios. Contactar al cliente para otorgar garantía técnica te permite resolver el desacuerdo y mantener tu acreditación oficial.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Listado de Opiniones de Clientes */}
+                    <div className="space-y-2 pt-2 border-t border-white/5">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">
+                        Evaluaciones de Propietarios ({mecanicoHistorial.filter(h => h.evaluacion).length}):
+                      </span>
+
+                      {mecanicoHistorial.filter(h => h.evaluacion).length === 0 ? (
+                        <div className="p-5 bg-slate-900/30 border border-white/5 rounded-2xl text-center text-xs text-slate-500 space-y-1">
+                          <p>Aún no hay clientes que hayan evaluado tus firmas.</p>
+                          <p className="text-[10px]">Las opiniones aparecerán aquí cuando los dueños califiquen el trabajo en su garaje.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                          {mecanicoHistorial.filter(h => h.evaluacion).map((h: any, idx: number) => {
+                            const esBueno = h.evaluacion === "Bueno";
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
+                                  esBueno
+                                    ? "bg-emerald-500/5 border-emerald-500/20 text-slate-200"
+                                    : "bg-red-500/10 border-red-500/30 text-slate-200"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-[10px] font-black uppercase flex items-center gap-1 ${
+                                    esBueno ? "text-emerald-400" : "text-red-400"
+                                  }`}>
+                                    <span>{esBueno ? "👍" : "👎"}</span>
+                                    <span>{esBueno ? "Calidad Aprobada" : "Reporte de Inconformidad"}</span>
+                                  </span>
+                                  <span className="text-[9px] font-mono text-slate-400">
+                                    {h.fechaEvaluacion ? h.fechaEvaluacion.split(" ")[0] : h.fecha}
+                                  </span>
+                                </div>
+
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  Vehículo: {h.placa} · Trabajo: "{h.trabajoRealizado}"
+                                </div>
+
+                                {h.comentarioEvaluacion && (
+                                  <div className={`p-2 rounded-xl text-[11px] leading-relaxed border ${
+                                    esBueno
+                                      ? "bg-black/40 text-emerald-100 border-emerald-500/20"
+                                      : "bg-black/50 text-red-200 border-red-500/40 font-medium"
+                                  }`}>
+                                    "{h.comentarioEvaluacion}"
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

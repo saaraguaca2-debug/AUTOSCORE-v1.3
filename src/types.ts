@@ -4,6 +4,10 @@ export interface Mecanico {
   taller: string;
   estado: "Activo" | "Suspendido";
   telefono?: string;
+  totalPositivas?: number;
+  totalNegativas?: number;
+  totalServicios?: number;
+  porcentajeCalidad?: number;
 }
 
 export interface Vehiculo {
@@ -26,6 +30,9 @@ export interface HistorialRow {
   trabajoRealizado: string;
   telefonoMecanico?: string;
   nombreMecanico?: string;
+  evaluacion?: "Bueno" | "Malo"; // Calificación dada por el dueño
+  comentarioEvaluacion?: string; // Motivo / experiencia si evaluó negativo o feedback positivo
+  fechaEvaluacion?: string;
 }
 
 export type VistaActual = "home" | "usuario" | "mecanico" | "documentacion" | "admin";

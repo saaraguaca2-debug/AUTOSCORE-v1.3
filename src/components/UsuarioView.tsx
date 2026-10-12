@@ -3,7 +3,7 @@ import {
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
   Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
   CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
-  PenTool, Share2, FileText, AlertTriangle
+  PenTool, Share2, FileText, AlertTriangle, ThumbsUp, ThumbsDown, Star, MessageSquare
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { notifyDataChanged } from "../mockData";
@@ -58,6 +58,52 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
   const [showFaceToFaceQR, setShowFaceToFaceQR] = useState(false);
   const [showMecanicoQR, setShowMecanicoQR] = useState(false);
   const [activeTecnicoModal, setActiveTecnicoModal] = useState<any | null>(null);
+
+  // Estados para el Sistema de Evaluación de Talleres / Mecánicos por el Dueño
+  const [evalModalItem, setEvalModalItem] = useState<{
+    idHistorial: number;
+    taller: string;
+    nombreMecanico: string;
+    codigoMecanico: string;
+    trabajo: string;
+    fecha: string;
+    calificacionPrevia?: "Bueno" | "Malo";
+    comentarioPrevio?: string;
+  } | null>(null);
+
+  const [evalTipo, setEvalTipo] = useState<"Bueno" | "Malo">("Bueno");
+  const [evalComentario, setEvalComentario] = useState("");
+  const [submittingEval, setSubmittingEval] = useState(false);
+  const [evalError, setEvalError] = useState<string | null>(null);
+  const [evalSuccessNotice, setEvalSuccessNotice] = useState<string | null>(null);
+
+  // Estados para el Directorio Público de Calidad Técnica de Talleres y Mecánicos
+  const [showDirectorioTalleres, setShowDirectorioTalleres] = useState(false);
+  const [directorioMecanicos, setDirectorioMecanicos] = useState<any[]>([]);
+  const [directorioHistorial, setDirectorioHistorial] = useState<any[]>([]);
+  const [loadingDirectorio, setLoadingDirectorio] = useState(false);
+  const [filtroDirectorio, setFiltroDirectorio] = useState("");
+  const [filtroTipoCalidad, setFiltroTipoCalidad] = useState<"todos" | "oro" | "inconformidad">("todos");
+  const [tallerDetalleModal, setTallerDetalleModal] = useState<any | null>(null);
+
+  const cargarDirectorioTalleres = async () => {
+    if (!appScriptUrl) return;
+    setLoadingDirectorio(true);
+    try {
+      const res = await fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" });
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.success) {
+          if (Array.isArray(json.mecanicos)) setDirectorioMecanicos(json.mecanicos);
+          if (Array.isArray(json.historial)) setDirectorioHistorial(json.historial);
+        }
+      }
+    } catch (e) {
+      console.warn("Error al consultar directorio de talleres:", e);
+    } finally {
+      setLoadingDirectorio(false);
+    }
+  };
 
   const [baseUrlOverride, setBaseUrlOverride] = useState<string>(() => {
     if (typeof window !== "undefined") {
@@ -461,6 +507,199 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     return "";
   };
 
+  // Guardar Evaluación del Dueño hacia un Servicio de Taller/Mecánico (Bueno o Malo + Experiencia)
+  const handleGuardarEvaluacion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!evalModalItem || !selectedCar) return;
+
+    if (evalTipo === "Malo" && !evalComentario.trim()) {
+      setEvalError("Por favor describe el motivo de tu evaluación negativa para auditar la calidad técnica del taller.");
+      return;
+    }
+
+    setSubmittingEval(true);
+    setEvalError(null);
+
+    const targetId = evalModalItem.idHistorial;
+    const finalTipo = evalTipo;
+    const finalCom = evalComentario.trim();
+    const fechaHoy = new Date().toISOString().split("T")[0];
+
+    // 1. Actualización optimista inmediata en el estado local de la interfaz
+    setHistorial(prev => prev.map(item => {
+      if (item.idHistorial === targetId) {
+        return {
+          ...item,
+          evaluacion: finalTipo,
+          comentarioEvaluacion: finalCom,
+          fechaEvaluacion: fechaHoy
+        };
+      }
+      return item;
+    }));
+
+    // 2. Guardar en localStorage para persistencia instantánea y offline
+    try {
+      localStorage.setItem(`autoscore_eval_${targetId}`, JSON.stringify({
+        idHistorial: targetId,
+        evaluacion: finalTipo,
+        comentarioEvaluacion: finalCom,
+        fechaEvaluacion: fechaHoy
+      }));
+    } catch {
+      // Ignorar errores de quota en localStorage
+    }
+
+    // 3. Enviar a Google Apps Script
+    try {
+      if (appScriptUrl) {
+        const payload = {
+          accion: "evaluarServicio",
+          idHistorial: targetId,
+          evaluacion: finalTipo,
+          comentario: finalCom,
+          placa: selectedCar.placa
+        };
+
+        await fetch(appScriptUrl, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify(payload)
+        });
+      }
+
+      setEvalSuccessNotice(`¡Evaluación ${finalTipo === "Bueno" ? "positiva 👍" : "negativa 👎"} guardada exitosamente!`);
+      setTimeout(() => setEvalSuccessNotice(null), 3500);
+      setEvalModalItem(null);
+      setEvalComentario("");
+      notifyDataChanged();
+    } catch (err: any) {
+      console.warn("Fallo al enviar evaluación a la base de datos:", err);
+      setEvalModalItem(null);
+      setEvalSuccessNotice("Evaluación guardada en tu dispositivo.");
+      setTimeout(() => setEvalSuccessNotice(null), 3000);
+    } finally {
+      setSubmittingEval(false);
+    }
+  };
+
+  // Renderizar bloque de Evaluación y Calidad Técnica de un servicio
+  const renderEvaluacionServicio = (row: HistorialRow, tallerReal: string, nombreMec: string) => {
+    const isCarOwner = !!(loggedUser && selectedCar && String(loggedUser.idDueno).trim().toLowerCase() === String(selectedCar.idDueno).trim().toLowerCase());
+
+    if (row.evaluacion) {
+      const esBueno = row.evaluacion === "Bueno";
+      return (
+        <div className={`mt-2 p-2.5 rounded-xl border flex flex-col gap-1.5 transition-all ${
+          esBueno
+            ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
+            : "bg-red-500/10 border-red-500/25 text-red-300"
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold font-display">
+              <span className="text-base">{esBueno ? "👍" : "👎"}</span>
+              <span className={esBueno ? "text-emerald-400 font-extrabold" : "text-red-400 font-extrabold"}>
+                {esBueno ? "Servicio Calificado Positivo por el Dueño" : "Reporte de Inconformidad Técnica del Dueño"}
+              </span>
+            </div>
+            {isCarOwner && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEvalModalItem({
+                    idHistorial: row.idHistorial,
+                    taller: tallerReal,
+                    nombreMecanico: nombreMec,
+                    codigoMecanico: row.codigoMecanico,
+                    trabajo: row.trabajoRealizado,
+                    fecha: row.fecha,
+                    calificacionPrevia: row.evaluacion,
+                    comentarioPrevio: row.comentarioEvaluacion
+                  });
+                  setEvalTipo(row.evaluacion || "Bueno");
+                  setEvalComentario(row.comentarioEvaluacion || "");
+                  setEvalError(null);
+                }}
+                className="text-[9.5px] font-bold text-slate-400 hover:text-white px-2 py-0.5 rounded bg-white/5 border border-white/10 hover:border-white/20 transition-colors cursor-pointer"
+              >
+                Editar reseña ✏️
+              </button>
+            )}
+          </div>
+          {row.comentarioEvaluacion ? (
+            <p className="text-[11px] text-slate-200 bg-black/40 p-2 rounded-lg border border-white/5 font-sans leading-relaxed">
+              "{row.comentarioEvaluacion}"
+            </p>
+          ) : !esBueno ? (
+            <p className="text-[10px] text-slate-400 italic">
+              El propietario reportó fallas técnicas o desacuerdo con esta reparación.
+            </p>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (isCarOwner) {
+      return (
+        <div className="mt-2 p-2.5 rounded-xl bg-slate-900/60 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+          <div className="min-w-0">
+            <span className="text-[11px] font-bold text-slate-200 block">
+              ¿Cómo fue la calidad técnica de este servicio?
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">
+              Califica con Bueno o Malo para ayudar a la comunidad a determinar la reputación del taller.
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setEvalModalItem({
+                  idHistorial: row.idHistorial,
+                  taller: tallerReal,
+                  nombreMecanico: nombreMec,
+                  codigoMecanico: row.codigoMecanico,
+                  trabajo: row.trabajoRealizado,
+                  fecha: row.fecha
+                });
+                setEvalTipo("Bueno");
+                setEvalComentario("");
+                setEvalError(null);
+              }}
+              className="text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+            >
+              <span>👍</span>
+              <span>Bueno</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEvalModalItem({
+                  idHistorial: row.idHistorial,
+                  taller: tallerReal,
+                  nombreMecanico: nombreMec,
+                  codigoMecanico: row.codigoMecanico,
+                  trabajo: row.trabajoRealizado,
+                  fecha: row.fecha
+                });
+                setEvalTipo("Malo");
+                setEvalComentario("");
+                setEvalError(null);
+              }}
+              className="text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+            >
+              <span>👎</span>
+              <span>Malo</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   // Normalizar de forma ultra robusta los datos del vehículo para reflejar con 100% de exactitud el Score y datos de la base de datos
   const normalizeVehiculo = (rawCar: any): Vehiculo => {
     if (!rawCar || typeof rawCar !== "object") {
@@ -649,6 +888,60 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         normalized.trabajoRealizado = row.trabajoRealizado || row.trabajo || "";
       }
 
+      // 9. Evaluación del Servicio por el Dueño ("Bueno" | "Malo")
+      const evalKeys = [
+        "evaluacion", "calificacion", "satisfaccion", "voto", "rating", "opinion", "status_evaluacion"
+      ];
+      const foundEval = getRowVal(row, evalKeys);
+      if (foundEval) {
+        const lower = foundEval.toLowerCase();
+        if (lower.includes("buen") || lower.includes("positiv") || lower === "1" || lower === "ok") {
+          normalized.evaluacion = "Bueno";
+        } else if (lower.includes("mal") || lower.includes("negativ") || lower === "0") {
+          normalized.evaluacion = "Malo";
+        }
+      }
+
+      // 10. Comentario / Experiencia reportada
+      const comKeys = [
+        "comentarioEvaluacion", "comentario_evaluacion", "comentario", "experiencia", "motivo", "feedback", "observacion", "queja"
+      ];
+      const foundCom = getRowVal(row, comKeys);
+      if (foundCom) {
+        normalized.comentarioEvaluacion = foundCom;
+      }
+
+      // 11. Fecha de Evaluación
+      const fechaEvalKeys = [
+        "fechaEvaluacion", "fecha_evaluacion", "fechaeval"
+      ];
+      const foundFechaEval = getRowVal(row, fechaEvalKeys);
+      if (foundFechaEval) {
+        normalized.fechaEvaluacion = foundFechaEval;
+      }
+
+      // 12. Fusionar con caché local de evaluaciones para persistencia inmediata y offline
+      try {
+        if (typeof window !== "undefined") {
+          const localKey = `autoscore_eval_${normalized.idHistorial}`;
+          const savedLocal = localStorage.getItem(localKey);
+          if (savedLocal) {
+            const parsed = JSON.parse(savedLocal);
+            if (parsed && parsed.evaluacion) {
+              normalized.evaluacion = parsed.evaluacion;
+              if (parsed.comentarioEvaluacion) {
+                normalized.comentarioEvaluacion = parsed.comentarioEvaluacion;
+              }
+              if (parsed.fechaEvaluacion) {
+                normalized.fechaEvaluacion = parsed.fechaEvaluacion;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Ignorar
+      }
+
       return normalized as HistorialRow;
     });
   };
@@ -793,14 +1086,37 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             </button>
           </form>
 
-          <div className="text-center">
+          <div className="text-center space-y-2 pt-1">
             <button
               onClick={() => { setViewMode("registro"); setError(null); setSuccessMsg(null); }}
-              className="text-xs text-slate-400 hover:text-amber-500 font-medium inline-flex items-center gap-1.5 py-1"
+              className="text-xs text-slate-400 hover:text-amber-500 font-medium inline-flex items-center gap-1.5 py-1 cursor-pointer"
             >
               <UserPlus className="w-3.5 h-3.5" />
               <span>¿No tienes cuenta? Registra tu usuario aquí</span>
             </button>
+
+            {/* Acceso público al Directorio de Calidad Técnica */}
+            <div className="pt-2 border-t border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDirectorioTalleres(true);
+                  cargarDirectorioTalleres();
+                }}
+                className="w-full bg-slate-900/60 hover:bg-slate-900 border border-amber-500/30 p-2.5 rounded-2xl flex items-center justify-between text-xs text-amber-300 font-bold shadow-md transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">⭐</span>
+                  <div className="text-left">
+                    <span className="block font-black text-white text-[11px]">Directorio de Calidad Técnica</span>
+                    <span className="block text-[9.5px] text-amber-400/80 font-normal">Consulta reputación y opiniones de talleres oficiales</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                  Explorar <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -900,11 +1216,32 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             </div>
             <button
               onClick={() => { setLoggedUser(null); setVehiculos([]); setViewMode("login"); }}
-              className="text-[10px] font-bold bg-slate-950 hover:bg-slate-900 border border-white/5 text-slate-400 px-2.5 py-1.5 rounded-lg transition-colors"
+              className="text-[10px] font-bold bg-slate-950 hover:bg-slate-900 border border-white/5 text-slate-400 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               Salir
             </button>
           </div>
+
+          {/* Botón de Acceso al Directorio Oficial de Calidad Técnica de Talleres */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowDirectorioTalleres(true);
+              cargarDirectorioTalleres();
+            }}
+            className="w-full bg-gradient-to-r from-amber-500/10 via-slate-900 to-amber-500/10 hover:from-amber-500/20 hover:to-amber-500/20 border border-amber-500/30 p-2.5 rounded-2xl flex items-center justify-between text-xs text-amber-300 font-bold shadow-md transition-all cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-xl bg-amber-500/20 text-amber-400 group-hover:scale-110 transition-transform">⭐</span>
+              <div className="text-left">
+                <span className="block font-black text-white text-[11px]">Directorio de Calidad Técnica</span>
+                <span className="block text-[9.5px] text-amber-400/80 font-normal">Consulta ranking y opiniones de talleres oficiales</span>
+              </div>
+            </div>
+            <span className="text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              Ver Talleres <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+            </span>
+          </button>
 
           <div className="flex justify-between items-center bg-white/5 p-3 rounded-xl border border-white/5 text-xs">
             <span className="text-slate-400">Tus Vehículos: <strong className="text-white font-mono">{vehiculos.length}</strong></span>
@@ -1391,6 +1728,9 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                       })()}
                                     </div>
                                   </div>
+
+                                  {/* Evaluación del Servicio por el Dueño (Bueno/Malo) */}
+                                  {renderEvaluacionServicio(row, tallerReal, nombreMec)}
                                 </div>
                               );
                             })}
@@ -1710,6 +2050,9 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                   })()}
                                 </div>
                               </div>
+
+                              {/* Evaluación del Servicio por el Dueño (Bueno/Malo) */}
+                              {renderEvaluacionServicio(row, tallerReal, nombreMec)}
                             </div>
                           );
                         })}
@@ -1911,6 +2254,567 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           </div>
         );
       })()}
+
+      {/* ---------------- AVISO FLOTANTE DE EVALUACIÓN GUARDADA ---------------- */}
+      {evalSuccessNotice && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-black px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 text-xs border border-emerald-300 animate-in slide-in-from-top duration-300 no-print">
+          <CheckCircle className="w-4 h-4 shrink-0" />
+          <span>{evalSuccessNotice}</span>
+        </div>
+      )}
+
+      {/* ---------------- MODAL OFICIAL DE EVALUACIÓN DE TALLER / MECÁNICO ---------------- */}
+      {evalModalItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-fade-in no-print">
+          <div className="bg-[#0b0c10] border border-amber-500/30 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[92vh] overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setEvalModalItem(null);
+                setEvalError(null);
+              }}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+
+            {/* Cabecera */}
+            <div className="text-center border-b border-white/5 pb-3">
+              <div className="inline-flex p-2.5 rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
+                <Star className="w-5 h-5 fill-amber-400/20" />
+              </div>
+              <div className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest">
+                Calidad Técnica de Servicio
+              </div>
+              <h4 className="text-base font-display font-black text-white mt-0.5">
+                {evalModalItem.taller || "Taller Autorizado"}
+              </h4>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Técnico: <strong className="text-slate-200">{evalModalItem.nombreMecanico || "Mecánico"}</strong> ({evalModalItem.codigoMecanico})
+              </p>
+              <div className="mt-2 bg-slate-950/70 p-2.5 rounded-xl border border-white/5 text-[10px] text-slate-300 text-left space-y-0.5">
+                <span className="text-slate-400 block font-mono">Trabajo evaluado:</span>
+                <span className="font-semibold text-amber-400 block">"{evalModalItem.trabajo}"</span>
+                <span className="text-[9px] text-slate-500 block font-mono">Fecha del servicio: {evalModalItem.fecha}</span>
+              </div>
+            </div>
+
+            <form onSubmit={handleGuardarEvaluacion} className="space-y-4">
+              {/* Selector Bueno / Malo */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
+                  ¿Cómo calificas la calidad técnica de este servicio?
+                </label>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEvalTipo("Bueno");
+                      setEvalError(null);
+                    }}
+                    className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      evalTipo === "Bueno"
+                        ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30 scale-[1.02]"
+                        : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <span className="text-2xl">👍</span>
+                    <span className="text-xs font-black">Bueno</span>
+                    <span className="text-[9px] opacity-80 text-center font-normal">Calidad aprobada</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEvalTipo("Malo");
+                      setEvalError(null);
+                    }}
+                    className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                      evalTipo === "Malo"
+                        ? "bg-red-500/20 border-red-500 text-red-300 ring-2 ring-red-500/30 scale-[1.02]"
+                        : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
+                    }`}
+                  >
+                    <span className="text-2xl">👎</span>
+                    <span className="text-xs font-black">Malo</span>
+                    <span className="text-[9px] opacity-80 text-center font-normal">Inconformidad / Falla</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Formulario Dinámico según selección */}
+              {evalTipo === "Malo" ? (
+                <div className="bg-red-950/25 border border-red-500/30 p-3 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex items-start gap-1.5 text-xs text-red-300">
+                    <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                    <div>
+                      <span className="font-extrabold block text-white text-[11px]">Describe tu experiencia técnica:</span>
+                      <span className="text-[10px] text-red-300/80 leading-tight">
+                        Por favor detalla por qué evaluaste negativo. Tu experiencia es fundamental para que la comunidad determine la calidad técnica del taller.
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Motivos rápidos */}
+                  <div>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                      Motivos frecuentes (click para agregar):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        "Falla persistente no resuelta",
+                        "Pieza defectuosa o mal instalada",
+                        "Cobro excesivo no presupuestado",
+                        "Falta de garantía del taller",
+                        "Demora excesiva en entrega",
+                        "Daño colateral al vehículo"
+                      ].map((motivo, mIdx) => (
+                        <button
+                          key={mIdx}
+                          type="button"
+                          onClick={() => {
+                            if (!evalComentario.includes(motivo)) {
+                              setEvalComentario(prev => prev ? `${prev}. ${motivo}` : motivo);
+                            }
+                          }}
+                          className="text-[9px] bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 rounded-lg px-2 py-0.5 transition-colors cursor-pointer"
+                        >
+                          + {motivo}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <textarea
+                      required
+                      rows={3}
+                      value={evalComentario}
+                      onChange={(e) => setEvalComentario(e.target.value)}
+                      placeholder="Explica detalladamente qué sucedió con esta reparación (ej: el ruido no se quitó, la pieza falló a los pocos días, cobraron más de lo acordado...)"
+                      className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-red-500 resize-none"
+                    />
+                    <span className="text-[9px] text-slate-500 block text-right">Mínimo 5 caracteres para guardar</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-emerald-950/20 border border-emerald-500/30 p-3 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex items-start gap-1.5 text-xs text-emerald-300">
+                    <Sparkles className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                    <div>
+                      <span className="font-extrabold block text-white text-[11px]">¡Trabajo técnico destacado!</span>
+                      <span className="text-[10px] text-emerald-300/80 leading-tight">
+                        Puedes dejar un comentario opcional sobre la calidad o profesionalismo del taller:
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Elogios rápidos */}
+                  <div>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                      Aspectos positivos (click para agregar):
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        "Diagnóstico certero y profesional",
+                        "Reparación rápida y garantizada",
+                        "Trabajo limpio y repuestos de calidad",
+                        "Excelente trato y precio justo"
+                      ].map((elogio, eIdx) => (
+                        <button
+                          key={eIdx}
+                          type="button"
+                          onClick={() => {
+                            if (!evalComentario.includes(elogio)) {
+                              setEvalComentario(prev => prev ? `${prev}. ${elogio}` : elogio);
+                            }
+                          }}
+                          className="text-[9px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 rounded-lg px-2 py-0.5 transition-colors cursor-pointer"
+                        >
+                          + {elogio}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <textarea
+                      rows={2}
+                      value={evalComentario}
+                      onChange={(e) => setEvalComentario(e.target.value)}
+                      placeholder="Escribe un comentario sobre el servicio recibido (opcional)..."
+                      className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {evalError && (
+                <div className="p-2.5 bg-red-950/30 border border-red-500/40 rounded-xl text-red-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span className="leading-tight">{evalError}</span>
+                </div>
+              )}
+
+              {/* Botones */}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEvalModalItem(null);
+                    setEvalError(null);
+                  }}
+                  className="flex-1 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={submittingEval}
+                  className={`flex-1 font-black py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-lg ${
+                    evalTipo === "Bueno"
+                      ? "bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20"
+                      : "bg-red-500 hover:bg-red-400 text-white shadow-red-500/20"
+                  }`}
+                >
+                  {submittingEval ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Guardar Evaluación</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL DIRECTORIO PÚBLICO DE CALIDAD TÉCNICA DE TALLERES ---------------- */}
+      {showDirectorioTalleres && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in no-print">
+          <div className="bg-[#0b0c10] border border-amber-500/30 rounded-3xl p-5 w-full max-w-md space-y-4 shadow-2xl relative max-h-[92vh] flex flex-col">
+            <button
+              type="button"
+              onClick={() => setShowDirectorioTalleres(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+
+            {/* Cabecera Directorio */}
+            <div className="text-center border-b border-white/5 pb-3 shrink-0">
+              <div className="inline-flex p-2.5 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 font-black shadow-lg mb-2">
+                <Star className="w-5 h-5 fill-current" />
+              </div>
+              <h3 className="text-lg font-display font-extrabold text-white">
+                Directorio Oficial de Calidad Técnica
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Ranking de reputación y opiniones de propietarios sobre talleres y mecánicos oficiales.
+              </p>
+            </div>
+
+            {/* Buscador y Filtros */}
+            <div className="space-y-2 shrink-0">
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  placeholder="Buscar taller, mecánico o código..."
+                  value={filtroDirectorio}
+                  onChange={(e) => setFiltroDirectorio(e.target.value)}
+                  className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCalidad("todos")}
+                  className={`py-1.5 rounded-lg font-bold transition-all ${
+                    filtroTipoCalidad === "todos" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Todos ({directorioMecanicos.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCalidad("oro")}
+                  className={`py-1.5 rounded-lg font-bold transition-all ${
+                    filtroTipoCalidad === "oro" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Oro (≥90%)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCalidad("inconformidad")}
+                  className={`py-1.5 rounded-lg font-bold transition-all ${
+                    filtroTipoCalidad === "inconformidad" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Con Quejas
+                </button>
+              </div>
+            </div>
+
+            {/* Listado con scroll */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {loadingDirectorio ? (
+                <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-amber-500 mx-auto" />
+                  <p>Consultando base de datos oficial de talleres...</p>
+                </div>
+              ) : (() => {
+                const query = filtroDirectorio.trim().toLowerCase();
+                const lista = directorioMecanicos.filter((m: any) => {
+                  const matchQuery = !query || 
+                    (m.taller && m.taller.toLowerCase().includes(query)) ||
+                    (m.nombre && m.nombre.toLowerCase().includes(query)) ||
+                    (m.codigoMecanico && m.codigoMecanico.toLowerCase().includes(query));
+                  
+                  if (!matchQuery) return false;
+
+                  const pct = m.porcentajeCalidad != null ? Number(m.porcentajeCalidad) : 100;
+                  const neg = Number(m.totalNegativas || 0);
+
+                  if (filtroTipoCalidad === "oro") return pct >= 90;
+                  if (filtroTipoCalidad === "inconformidad") return neg > 0;
+                  return true;
+                });
+
+                if (lista.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-xs text-slate-500">
+                      No se encontraron talleres con los criterios de búsqueda seleccionados.
+                    </div>
+                  );
+                }
+
+                return lista.map((mec: any, idx: number) => {
+                  const pct = mec.porcentajeCalidad != null ? Number(mec.porcentajeCalidad) : 100;
+                  const pos = Number(mec.totalPositivas || 0);
+                  const neg = Number(mec.totalNegativas || 0);
+                  const total = Number(mec.totalServicios || (pos + neg));
+                  
+                  let badgeBadge = {
+                    texto: "Taller Certificado Oro",
+                    clase: "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                  };
+                  if (neg > 0 && pct < 75) {
+                    badgeBadge = {
+                      texto: "Alerta Técnica / En Observación",
+                      clase: "bg-red-500/10 text-red-400 border-red-500/30"
+                    };
+                  } else if (pct < 90) {
+                    badgeBadge = {
+                      texto: "Calidad Técnica Confiable",
+                      clase: "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                    };
+                  }
+
+                  // Reseñas de este mecánico
+                  const opinionesTaller = directorioHistorial.filter((h: any) => 
+                    (h.codigoMecanico && h.codigoMecanico.toString().toUpperCase() === (mec.codigoMecanico || "").toString().toUpperCase()) &&
+                    h.evaluacion
+                  );
+
+                  return (
+                    <div key={idx} className="bg-slate-900/50 border border-white/5 rounded-2xl p-3.5 space-y-3 hover:border-amber-500/30 transition-all">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            <h4 className="text-sm font-extrabold text-white leading-tight">
+                              {mec.taller || "Taller Oficial"}
+                            </h4>
+                          </div>
+                          <span className="text-[11px] text-slate-300 block mt-0.5">
+                            Mecánico: <strong className="text-white">{mec.nombre}</strong> <span className="text-slate-500 font-mono">({mec.codigoMecanico})</span>
+                          </span>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-sm font-black font-display text-amber-400 block">
+                            {pct}%
+                          </span>
+                          <span className="text-[8.5px] uppercase font-mono text-slate-400 block">
+                            Calidad Técnica
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Badge e Indicadores */}
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-white/5 text-[10px]">
+                        <span className={`px-2 py-0.5 rounded-lg border font-bold text-[9px] ${badgeBadge.clase}`}>
+                          {badgeBadge.texto}
+                        </span>
+
+                        <div className="flex items-center gap-2 font-mono text-[9.5px]">
+                          <span className="text-emerald-400 flex items-center gap-0.5">
+                            <ThumbsUp className="w-3 h-3" /> {pos}
+                          </span>
+                          <span className="text-red-400 flex items-center gap-0.5">
+                            <ThumbsDown className="w-3 h-3" /> {neg}
+                          </span>
+                          <span className="text-slate-500">
+                            ({total} trabajos)
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Botones de Acción */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setTallerDetalleModal({ mecanico: mec, opiniones: opinionesTaller })}
+                          className="py-1.5 px-2 bg-white/5 hover:bg-white/10 text-slate-200 border border-white/10 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                        >
+                          <MessageSquare className="w-3 h-3 text-amber-400" />
+                          <span>Ver Opiniones ({opinionesTaller.length})</span>
+                        </button>
+
+                        {mec.telefono ? (
+                          <a
+                            href={`https://wa.me/${mec.telefono}?text=${encodeURIComponent(`Hola ${mec.taller || "Taller"}. Los contacto a través del Directorio Oficial de AutoScore para consultar disponibilidad técnica.`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-1.5 px-2 bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] border border-[#25D366]/30 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer"
+                          >
+                            <Phone className="w-3 h-3 fill-current" />
+                            <span>Contactar WhatsApp</span>
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 flex items-center justify-center">
+                            Sin teléfono público
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            <div className="pt-2 border-t border-white/5 text-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowDirectorioTalleres(false)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cerrar Directorio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL DE DETALLE DE OPINIONES Y AUDITORÍA DE UN TALLER ---------------- */}
+      {tallerDetalleModal && (
+        <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fade-in no-print">
+          <div className="bg-[#0b0c10] border border-amber-500/40 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative max-h-[90vh] flex flex-col">
+            <button
+              type="button"
+              onClick={() => setTallerDetalleModal(null)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white text-base font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+
+            <div className="text-center border-b border-white/5 pb-3 shrink-0">
+              <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block">
+                Auditoría de Calidad Técnica
+              </span>
+              <h4 className="text-base font-display font-black text-white mt-0.5">
+                {tallerDetalleModal.mecanico.taller || "Taller Autorizado"}
+              </h4>
+              <p className="text-xs text-slate-400">
+                Mecánico: <strong className="text-slate-200">{tallerDetalleModal.mecanico.nombre}</strong>
+              </p>
+              <div className="mt-2 inline-flex items-center gap-2 bg-slate-950 px-3 py-1 rounded-full border border-white/10 text-xs">
+                <span className="font-extrabold text-amber-400">
+                  {tallerDetalleModal.mecanico.porcentajeCalidad || 100}% de Aprobación
+                </span>
+                <span className="text-slate-500">|</span>
+                <span className="text-emerald-400 font-mono text-[11px]">
+                  👍 {tallerDetalleModal.mecanico.totalPositivas || 0}
+                </span>
+                <span className="text-red-400 font-mono text-[11px]">
+                  👎 {tallerDetalleModal.mecanico.totalNegativas || 0}
+                </span>
+              </div>
+            </div>
+
+            {/* Listado de Opiniones */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 pr-1">
+              {tallerDetalleModal.opiniones.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-500 space-y-1">
+                  <p>Aún no hay reseñas registradas para este taller.</p>
+                  <p className="text-[10px]">Los clientes pueden calificar sus servicios en el historial de su vehículo.</p>
+                </div>
+              ) : (
+                tallerDetalleModal.opiniones.map((op: any, oIdx: number) => {
+                  const esPositivo = op.evaluacion === "Bueno";
+                  return (
+                    <div
+                      key={oIdx}
+                      className={`p-3 rounded-2xl border text-xs space-y-1.5 transition-all ${
+                        esPositivo
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-slate-200"
+                          : "bg-red-500/10 border-red-500/25 text-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[10px] font-black uppercase flex items-center gap-1 ${
+                          esPositivo ? "text-emerald-400" : "text-red-400"
+                        }`}>
+                          <span>{esPositivo ? "👍" : "👎"}</span>
+                          <span>{esPositivo ? "Calidad Aprobada" : "Reporte Negativo"}</span>
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-400">
+                          {op.fechaEvaluacion ? op.fechaEvaluacion.split(" ")[0] : op.fecha}
+                        </span>
+                      </div>
+
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        Vehículo: {op.placa ? op.placa.slice(0, 3) + "***" : "Homologado"} · Reparación: "{op.trabajoRealizado}"
+                      </div>
+
+                      {op.comentarioEvaluacion ? (
+                        <p className={`p-2 rounded-xl text-[11px] leading-relaxed border ${
+                          esPositivo 
+                            ? "bg-black/40 text-emerald-100 border-emerald-500/20" 
+                            : "bg-black/50 text-red-100 border-red-500/30 font-medium"
+                        }`}>
+                          "{op.comentarioEvaluacion}"
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 italic">
+                          {esPositivo ? "El cliente calificó el trabajo como satisfactorio." : "El cliente reportó inconformidad técnica con este trabajo."}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-white/5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setTallerDetalleModal(null)}
+                className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold py-2 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Volver al Directorio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

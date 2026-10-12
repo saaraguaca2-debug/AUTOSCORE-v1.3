@@ -87,8 +87,8 @@ function doGet(e) {
     const params = e.parameter || {};
     const accion = (params.accion || "").toString().trim();
     
-    // CASO ADMIN: Obtener todos los datos de forma unificada si la clave es correcta
-    if (accion === "adminData") {
+    // CASO ADMIN / DIRECTORIO: Obtener datos oficiales o directorio de reputación técnica de talleres
+    if (accion === "adminData" || accion === "directorioMecanicos" || accion === "reputacionTalleres") {
       const adminPasswordInput = params.password || "";
       // El script puede verificar una contraseña enviada por la app (ADMIN_PASSWORD)
       // Para máxima flexibilidad de despliegue directo de $0 USD, el adminPassword se pasa en la petición
@@ -128,23 +128,28 @@ function doGet(e) {
         }));
       }
       
-      const sMec = sheetApp.getSheetByName("Mecanicos");
-      if (sMec) {
-        const d = sMec.getDataRange().getValues();
-        const h = d[0];
-        dataOut.mecanicos = d.slice(1).map(row => ({
-          codigoMecanico: getRowValue(row, h, "CodigoMecanico"),
-          nombre: getRowValue(row, h, "Nombre"),
-          taller: getRowValue(row, h, "Taller"),
-          estado: getRowValue(row, h, "Estado", "Activo"),
-          telefono: getRowValue(row, h, "Telefono")
-        }));
-      }
-      
       const sHis = sheetApp.getSheetByName("Historial");
+      const statsMecanicos = {};
+
       if (sHis) {
         const d = sHis.getDataRange().getValues();
         const h = d[0];
+        
+        // Recopilar evaluaciones por código de mecánico
+        for (let i = 1; i < d.length; i++) {
+          const cod = getRowValue(d[i], h, "CodigoMecanico").toUpperCase();
+          const ev = getRowValue(d[i], h, "Evaluacion").toLowerCase();
+          if (cod) {
+            if (!statsMecanicos[cod]) statsMecanicos[cod] = { pos: 0, neg: 0, total: 0 };
+            statsMecanicos[cod].total++;
+            if (ev === "bueno" || ev.indexOf("positiv") !== -1 || ev === "1") {
+              statsMecanicos[cod].pos++;
+            } else if (ev === "malo" || ev.indexOf("negativ") !== -1 || ev === "0") {
+              statsMecanicos[cod].neg++;
+            }
+          }
+        }
+
         dataOut.historial = d.slice(1).map(row => ({
           idHistorial: Number(getRowValue(row, h, "IdHistorial")),
           placa: getRowValue(row, h, "Placa"),
@@ -152,8 +157,34 @@ function doGet(e) {
           kilometraje: Number(getRowValue(row, h, "Kilometraje")),
           codigoMecanico: getRowValue(row, h, "CodigoMecanico"),
           taller: getRowValue(row, h, "Taller"),
-          trabajoRealizado: getRowValue(row, h, "TrabajoRealizado")
+          trabajoRealizado: getRowValue(row, h, "TrabajoRealizado"),
+          evaluacion: getRowValue(row, h, "Evaluacion"),
+          comentarioEvaluacion: getRowValue(row, h, "ComentarioEvaluacion"),
+          fechaEvaluacion: getRowValue(row, h, "FechaEvaluacion")
         })).sort((a,b) => b.idHistorial - a.idHistorial);
+      }
+
+      const sMec = sheetApp.getSheetByName("Mecanicos");
+      if (sMec) {
+        const d = sMec.getDataRange().getValues();
+        const h = d[0];
+        dataOut.mecanicos = d.slice(1).map(row => {
+          const cod = getRowValue(row, h, "CodigoMecanico").toUpperCase();
+          const st = statsMecanicos[cod] || { pos: 0, neg: 0, total: 0 };
+          const totalVal = st.pos + st.neg;
+          const pct = totalVal > 0 ? Math.round((st.pos / totalVal) * 100) : 100;
+          return {
+            codigoMecanico: getRowValue(row, h, "CodigoMecanico"),
+            nombre: getRowValue(row, h, "Nombre"),
+            taller: getRowValue(row, h, "Taller"),
+            estado: getRowValue(row, h, "Estado", "Activo"),
+            telefono: getRowValue(row, h, "Telefono"),
+            totalPositivas: st.pos,
+            totalNegativas: st.neg,
+            totalServicios: st.total,
+            porcentajeCalidad: pct
+          };
+        });
       }
       
       return getCorsResponse(dataOut);
@@ -306,8 +337,9 @@ function doGet(e) {
         return getCorsResponse({ success: false, error: "Vehículo no registrado en la base de datos de AutoScore." });
       }
       
-      // REGLA COMERCIAL: Si el certificado está 'Vencido', solo se permite visualización simple en la app (sin auditoría VIP)
-      if (vehiculo.estadoCertificado === "Vencido") {
+      // REGLA COMERCIAL: Si el certificado está 'Vencido' y la consulta es para visualización de usuario simple (no mecánico con tipoCertificado=completo),
+      // solo se permite visualización simple en la app sin auditoría VIP
+      if (vehiculo.estadoCertificado === "Vencido" && tipoCertificado !== "completo") {
         return getCorsResponse({
           success: true,
           tipoCertificado: "simple",
@@ -388,6 +420,10 @@ function doGet(e) {
         let hTrabajo = headersH.indexOf("TrabajoRealizado");
         if (hTrabajo === -1) hTrabajo = findColumnIndex(headersH, "TrabajoRealizado");
         if (hTrabajo === -1) hTrabajo = 6; // Columna G por defecto
+
+        let hEval = findColumnIndex(headersH, "Evaluacion");
+        let hComEval = findColumnIndex(headersH, "ComentarioEvaluacion");
+        let hFechaEval = findColumnIndex(headersH, "FechaEvaluacion");
         
         for (let j = 0; j < rowsH.length; j++) {
           const row = rowsH[j];
@@ -418,6 +454,10 @@ function doGet(e) {
             } else {
               formattedFecha = Utilities.formatDate(new Date(), "GMT-4", "dd/MM/yyyy");
             }
+
+            const evalVal = hEval !== -1 && row[hEval] !== undefined ? row[hEval].toString().trim() : "";
+            const comVal = hComEval !== -1 && row[hComEval] !== undefined ? row[hComEval].toString().trim() : "";
+            const fechaEvalVal = hFechaEval !== -1 && row[hFechaEval] !== undefined ? row[hFechaEval].toString().trim() : "";
             
             timeline.push({
               idHistorial: hId !== -1 && row[hId] !== undefined ? Number(row[hId]) : j,
@@ -426,7 +466,10 @@ function doGet(e) {
               codigoMecanico: codigoFirma,
               taller: (hTaller !== -1 && row[hTaller] !== undefined && row[hTaller]) ? row[hTaller].toString().trim() : "Taller Autorizado",
               trabajoRealizado: hTrabajo !== -1 && row[hTrabajo] !== undefined ? row[hTrabajo].toString().trim() : "",
-              telefonoMecanico: telDelTaller // <--- REPARACIÓN COMPLETADA
+              telefonoMecanico: telDelTaller,
+              evaluacion: evalVal,
+              comentarioEvaluacion: comVal,
+              fechaEvaluacion: fechaEvalVal
             });
           }
         }
@@ -625,14 +668,36 @@ function doPost(e) {
       const hV = vData[0];
       const rV = vData.slice(1);
       
-      // Validar placa repetida
+      // Validar si la placa ya existe
+      let filaExistente = -1;
       for (let i = 0; i < rV.length; i++) {
         if (getRowValue(rV[i], hV, "Placa").toUpperCase() === placa) {
-          return getCorsResponse({ success: false, error: "La placa '" + placa + "' ya se encuentra registrada en el sistema." });
+          filaExistente = i + 2; // Fila 1 es cabecera
+          break;
         }
       }
+
+      // Si ya existe y se trata de una Re-Inspección
+      if (filaExistente !== -1) {
+        if (payload.esReinspeccion) {
+          const idxScore = findColumnIndex(hV, "Score");
+          const idxEstado = findColumnIndex(hV, "EstadoCertificado");
+          if (idxScore !== -1) {
+            sheetVehiculos.getRange(filaExistente, idxScore + 1).setValue(score);
+          }
+          if (idxEstado !== -1) {
+            sheetVehiculos.getRange(filaExistente, idxEstado + 1).setValue(estadoCertificado || "Activo");
+          }
+          return getCorsResponse({
+            success: true,
+            message: "Vehículo re-inspeccionado y Score actualizado correctamente a " + score + " pts.",
+            data: { placa: placa, score: score, esReinspeccion: true }
+          });
+        }
+        return getCorsResponse({ success: false, error: "La placa '" + placa + "' ya se encuentra registrada en el sistema. Utilice el modo Re-Inspección Técnica para actualizar su score." });
+      }
       
-      // Registrar vehículo
+      // Registrar nuevo vehículo
       sheetVehiculos.appendRow([
         placa,
         marca,
@@ -647,6 +712,120 @@ function doPost(e) {
         success: true,
         message: "Vehículo homologado y registrado correctamente en AutoScore.",
         data: { placa: placa, score: score }
+      });
+    }
+
+    // ACCIÓN NUEVA: Re-Inspección Técnica por Mejoras (Actualiza Score en 'Vehiculos' y emite firma en 'Historial')
+    if (accion === "reinspeccionarVehiculo") {
+      const placa = (payload.placa || "").toString().trim().toUpperCase();
+      const score = Number(payload.score || 90);
+      const codigoMecanico = (payload.codigoMecanico || payload.codMec || "").toString().trim();
+      const kilometraje = Number(payload.kilometraje || 0);
+      const trabajo = (payload.trabajo || "").toString().trim();
+      const estadoCertificado = (payload.estadoCertificado || "Activo").toString().trim();
+      
+      if (!placa || !codigoMecanico || !trabajo) {
+        return getCorsResponse({ success: false, error: "Faltan datos obligatorios para la re-inspección (placa, mecánico, trabajo)." });
+      }
+      
+      // 1. Validar mecánico y suspensión
+      const sheetMecanicos = sheetApp.getSheetByName("Mecanicos");
+      let mecanico = null;
+      if (sheetMecanicos) {
+        const mData = sheetMecanicos.getDataRange().getValues();
+        const hM = mData[0];
+        const rM = mData.slice(1);
+        for (let i = 0; i < rM.length; i++) {
+          if (getRowValue(rM[i], hM, "CodigoMecanico").trim() === codigoMecanico) {
+            mecanico = {
+              codigo: codigoMecanico,
+              nombre: getRowValue(rM[i], hM, "Nombre"),
+              taller: getRowValue(rM[i], hM, "Taller"),
+              estado: getRowValue(rM[i], hM, "Estado", "Activo").trim()
+            };
+            break;
+          }
+        }
+      }
+      
+      if (!mecanico) {
+        return getCorsResponse({ success: false, error: "Código de mecánico no verificado en AutoScore." });
+      }
+      
+      if (mecanico.estado.toLowerCase() === "suspendido") {
+        return getCorsResponse({
+          success: false,
+          error: "ACCESO DENEGADO: Tu taller o cuenta de mecánico se encuentra SUSPENDIDA. Regulariza tu membresía de AutoScore con el Administrador."
+        });
+      }
+      
+      // 2. Buscar y actualizar vehículo en hoja 'Vehiculos'
+      const sheetVehiculos = sheetApp.getSheetByName("Vehiculos");
+      if (!sheetVehiculos) {
+        return getCorsResponse({ success: false, error: "Pestaña 'Vehiculos' no configurada." });
+      }
+      
+      const vData = sheetVehiculos.getDataRange().getValues();
+      const hV = vData[0];
+      const idxPlaca = findColumnIndex(hV, "Placa");
+      const idxScore = findColumnIndex(hV, "Score");
+      const idxEstado = findColumnIndex(hV, "EstadoCertificado");
+      
+      let vehiculoEncontradoFila = -1;
+      for (let i = 1; i < vData.length; i++) {
+        if (vData[i][idxPlaca].toString().trim().toUpperCase() === placa) {
+          vehiculoEncontradoFila = i + 1; // 1-based index para getRange
+          break;
+        }
+      }
+      
+      if (vehiculoEncontradoFila === -1) {
+        return getCorsResponse({ success: false, error: "El vehículo con placa '" + placa + "' no existe. Debe realizar una Inspección de Ingreso primero." });
+      }
+      
+      // Actualizar Score en la hoja
+      if (idxScore !== -1) {
+        sheetVehiculos.getRange(vehiculoEncontradoFila, idxScore + 1).setValue(score);
+      }
+      
+      // Reactivar certificado
+      if (idxEstado !== -1) {
+        sheetVehiculos.getRange(vehiculoEncontradoFila, idxEstado + 1).setValue(estadoCertificado || "Activo");
+      }
+      
+      // 3. Registrar constancia de re-inspección en el Historial
+      const sheetHistorial = sheetApp.getSheetByName("Historial");
+      let newId = 10001;
+      if (sheetHistorial) {
+        const lastRow = sheetHistorial.getLastRow();
+        if (lastRow > 1) {
+          const lastId = sheetHistorial.getRange(lastRow, 1).getValue();
+          if (!isNaN(lastId)) {
+            newId = Number(lastId) + 1;
+          }
+        }
+        const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
+        sheetHistorial.appendRow([
+          newId,
+          placa,
+          fechaActual,
+          kilometraje,
+          codigoMecanico,
+          mecanico.taller || "Taller Independiente",
+          trabajo
+        ]);
+      }
+      
+      return getCorsResponse({
+        success: true,
+        message: "¡Re-inspección técnica completada! Nuevo Score certificado: " + score + " pts.",
+        data: {
+          placa: placa,
+          score: score,
+          idHistorial: newId,
+          mecanico: mecanico.nombre,
+          taller: mecanico.taller
+        }
       });
     }
     
@@ -758,6 +937,77 @@ function doPost(e) {
       });
     }
     
+    // ACCIÓN NUEVA: Evaluar / Calificar Servicio de Mecánico y Taller (Bueno o Malo + Experiencia)
+    if (accion === "evaluarServicio" || accion === "calificarMecanico") {
+      const idHistorial = Number(payload.idHistorial || 0);
+      const evaluacion = (payload.evaluacion || payload.calificacion || "").toString().trim(); // "Bueno" o "Malo"
+      const comentario = (payload.comentario || payload.experiencia || "").toString().trim();
+      
+      if (!idHistorial || !evaluacion) {
+        return getCorsResponse({ success: false, error: "Faltan datos obligatorios para la evaluación (idHistorial, evaluacion)." });
+      }
+      
+      const sheetHistorial = sheetApp.getSheetByName("Historial");
+      if (!sheetHistorial) {
+        return getCorsResponse({ success: false, error: "Pestaña 'Historial' no configurada." });
+      }
+      
+      const d = sheetHistorial.getDataRange().getValues();
+      const h = d[0];
+      const idxId = findColumnIndex(h, "IdHistorial");
+      
+      if (idxId === -1) {
+        return getCorsResponse({ success: false, error: "Columna 'IdHistorial' no encontrada en la hoja Historial." });
+      }
+      
+      // Auto-crear columnas de Evaluación si no existen en la hoja
+      let idxEval = findColumnIndex(h, "Evaluacion");
+      let idxCom = findColumnIndex(h, "ComentarioEvaluacion");
+      let idxFechaEval = findColumnIndex(h, "FechaEvaluacion");
+      
+      if (idxEval === -1) {
+        idxEval = h.length;
+        sheetHistorial.getRange(1, idxEval + 1).setValue("Evaluacion");
+      }
+      if (idxCom === -1) {
+        idxCom = idxEval === h.length ? idxEval + 1 : h.length;
+        sheetHistorial.getRange(1, idxCom + 1).setValue("ComentarioEvaluacion");
+      }
+      if (idxFechaEval === -1) {
+        idxFechaEval = Math.max(idxEval, idxCom) + 1;
+        sheetHistorial.getRange(1, idxFechaEval + 1).setValue("FechaEvaluacion");
+      }
+      
+      // Buscar la fila por IdHistorial
+      let filaTarget = -1;
+      for (let i = 1; i < d.length; i++) {
+        if (Number(d[i][idxId]) === idHistorial) {
+          filaTarget = i + 1; // 1-based index para getRange
+          break;
+        }
+      }
+      
+      if (filaTarget === -1) {
+        return getCorsResponse({ success: false, error: "Registro de historial #" + idHistorial + " no encontrado." });
+      }
+      
+      const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
+      sheetHistorial.getRange(filaTarget, idxEval + 1).setValue(evaluacion);
+      sheetHistorial.getRange(filaTarget, idxCom + 1).setValue(comentario);
+      sheetHistorial.getRange(filaTarget, idxFechaEval + 1).setValue(fechaActual);
+      
+      return getCorsResponse({
+        success: true,
+        message: "¡Evaluación registrada correctamente! Gracias por certificar la calidad técnica de este taller.",
+        data: {
+          idHistorial: idHistorial,
+          evaluacion: evaluacion,
+          comentario: comentario,
+          fecha: fechaActual
+        }
+      });
+    }
+
     // ACCIÓN 4: Actualización por el Administrador (Usuarios, Mecánicos, Certificados de Vehículos)
     if (accion === "adminUpdate") {
       const subAccion = (payload.subAccion || "").toString().trim();
@@ -814,6 +1064,26 @@ function doPost(e) {
           if (d[i][idxId].toString().trim().toUpperCase() === targetId.toUpperCase()) {
             sheetVeh.getRange(i + 1, idxEst + 1).setValue(nuevoEstado);
             return getCorsResponse({ success: true, message: "Certificado de vehículo actualizado correctamente a: " + nuevoEstado });
+          }
+        }
+        return getCorsResponse({ success: false, error: "Vehículo no encontrado." });
+      }
+
+      if (subAccion === "actualizarScoreVehiculo" || subAccion === "actualizarScore") {
+        const sheetVeh = sheetApp.getSheetByName("Vehiculos");
+        if (!sheetVeh) return getCorsResponse({ success: false, error: "Pestaña 'Vehiculos' no encontrada." });
+        const d = sheetVeh.getDataRange().getValues();
+        const h = d[0];
+        const idxId = findColumnIndex(h, "Placa");
+        const idxScore = findColumnIndex(h, "Score");
+        const numScore = Number(payload.nuevoScore || nuevoEstado || 90);
+        
+        for (let i = 1; i < d.length; i++) {
+          if (d[i][idxId].toString().trim().toUpperCase() === targetId.toUpperCase()) {
+            if (idxScore !== -1) {
+              sheetVeh.getRange(i + 1, idxScore + 1).setValue(numScore);
+            }
+            return getCorsResponse({ success: true, message: "Score del vehículo " + targetId + " actualizado correctamente a: " + numScore + " pts." });
           }
         }
         return getCorsResponse({ success: false, error: "Vehículo no encontrado." });
