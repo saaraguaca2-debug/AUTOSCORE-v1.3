@@ -53,6 +53,8 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     }
   };
 
+  const [filtroOpiniones, setFiltroOpiniones] = useState<"todas" | "bueno" | "malo">("todas");
+
   // Estados del Formulario de Mantenimiento
   const [placa, setPlaca] = useState("");
   const [kilometraje, setKilometraje] = useState("");
@@ -1491,58 +1493,110 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                     {/* Listado de Opiniones de Clientes */}
                     <div className="space-y-2 pt-2 border-t border-white/5">
-                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">
-                        Evaluaciones de Propietarios ({mecanicoHistorial.filter(h => h.evaluacion).length}):
-                      </span>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest block">
+                          Evaluaciones de Propietarios ({mecanicoHistorial.filter(h => h.evaluacion).length}):
+                        </span>
 
-                      {mecanicoHistorial.filter(h => h.evaluacion).length === 0 ? (
-                        <div className="p-5 bg-slate-900/30 border border-white/5 rounded-2xl text-center text-xs text-slate-500 space-y-1">
-                          <p>Aún no hay clientes que hayan evaluado tus firmas.</p>
-                          <p className="text-[10px]">Las opiniones aparecerán aquí cuando los dueños califiquen el trabajo en su garaje.</p>
+                        {/* Filtros con la suma de calificaciones */}
+                        <div className="flex items-center gap-1 text-[9.5px] font-mono">
+                          <button
+                            type="button"
+                            onClick={() => setFiltroOpiniones("todas")}
+                            className={`px-2 py-0.5 rounded-lg border transition-all cursor-pointer ${
+                              filtroOpiniones === "todas"
+                                ? "bg-amber-500 text-slate-950 border-amber-400 font-black"
+                                : "bg-slate-900 border-white/10 text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            Todas ({pos + neg})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroOpiniones("bueno")}
+                            className={`px-2 py-0.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              filtroOpiniones === "bueno"
+                                ? "bg-emerald-500 text-slate-950 border-emerald-400 font-black"
+                                : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
+                            }`}
+                          >
+                            <span>👍 Bueno ({pos})</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFiltroOpiniones("malo")}
+                            className={`px-2 py-0.5 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              filtroOpiniones === "malo"
+                                ? "bg-red-500 text-white border-red-400 font-black"
+                                : "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
+                            }`}
+                          >
+                            <span>👎 Malo ({neg})</span>
+                          </button>
                         </div>
-                      ) : (
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
-                          {mecanicoHistorial.filter(h => h.evaluacion).map((h: any, idx: number) => {
-                            const esBueno = h.evaluacion === "Bueno";
-                            return (
-                              <div
-                                key={idx}
-                                className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
-                                  esBueno
-                                    ? "bg-emerald-500/5 border-emerald-500/20 text-slate-200"
-                                    : "bg-red-500/10 border-red-500/30 text-slate-200"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className={`text-[10px] font-black uppercase flex items-center gap-1 ${
-                                    esBueno ? "text-emerald-400" : "text-red-400"
-                                  }`}>
-                                    <span>{esBueno ? "👍" : "👎"}</span>
-                                    <span>{esBueno ? "Calidad Aprobada" : "Reporte de Inconformidad"}</span>
-                                  </span>
-                                  <span className="text-[9px] font-mono text-slate-400">
-                                    {h.fechaEvaluacion ? h.fechaEvaluacion.split(" ")[0] : h.fecha}
-                                  </span>
-                                </div>
+                      </div>
 
-                                <div className="text-[10px] text-slate-400 font-mono">
-                                  Vehículo: {h.placa} · Trabajo: "{h.trabajoRealizado}"
-                                </div>
+                      {(() => {
+                        const listaOpiniones = mecanicoHistorial.filter(h => {
+                          if (!h.evaluacion) return false;
+                          if (filtroOpiniones === "bueno") return h.evaluacion === "Bueno";
+                          if (filtroOpiniones === "malo") return h.evaluacion === "Malo";
+                          return true;
+                        });
 
-                                {h.comentarioEvaluacion && (
-                                  <div className={`p-2 rounded-xl text-[11px] leading-relaxed border ${
+                        if (listaOpiniones.length === 0) {
+                          return (
+                            <div className="p-5 bg-slate-900/30 border border-white/5 rounded-2xl text-center text-xs text-slate-500 space-y-1">
+                              <p>No hay evaluaciones {filtroOpiniones !== "todas" ? `en la categoría seleccionada` : "aún"}.</p>
+                              <p className="text-[10px]">Las opiniones aparecerán aquí cuando los dueños califiquen el trabajo en su garaje.</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                            {listaOpiniones.map((h: any, idx: number) => {
+                              const esBueno = h.evaluacion === "Bueno";
+                              return (
+                                <div
+                                  key={idx}
+                                  className={`p-3 rounded-2xl border text-xs space-y-1.5 ${
                                     esBueno
-                                      ? "bg-black/40 text-emerald-100 border-emerald-500/20"
-                                      : "bg-black/50 text-red-200 border-red-500/40 font-medium"
-                                  }`}>
-                                    "{h.comentarioEvaluacion}"
+                                      ? "bg-emerald-500/5 border-emerald-500/20 text-slate-200"
+                                      : "bg-red-500/10 border-red-500/30 text-slate-200"
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className={`text-[10px] font-black uppercase flex items-center gap-1 ${
+                                      esBueno ? "text-emerald-400" : "text-red-400"
+                                    }`}>
+                                      <span>{esBueno ? "👍" : "👎"}</span>
+                                      <span>{esBueno ? "Calidad Aprobada" : "Reporte de Inconformidad"}</span>
+                                    </span>
+                                    <span className="text-[9px] font-mono text-slate-400">
+                                      {h.fechaEvaluacion ? h.fechaEvaluacion.split(" ")[0] : h.fecha}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    Vehículo: {h.placa} · Trabajo: "{h.trabajoRealizado}"
+                                  </div>
+
+                                  {h.comentarioEvaluacion && (
+                                    <div className={`p-2 rounded-xl text-[11px] leading-relaxed border ${
+                                      esBueno
+                                        ? "bg-black/40 text-emerald-100 border-emerald-500/20"
+                                        : "bg-black/50 text-red-200 border-red-500/40 font-medium"
+                                    }`}>
+                                      "{h.comentarioEvaluacion}"
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

@@ -105,6 +105,16 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     }
   };
 
+  // Sincronizar directorio de talleres y estadísticas de calidad en mount y eventos
+  useEffect(() => {
+    cargarDirectorioTalleres();
+    const handleUpdate = () => {
+      cargarDirectorioTalleres();
+    };
+    window.addEventListener("autoscore_data_updated", handleUpdate);
+    return () => window.removeEventListener("autoscore_data_updated", handleUpdate);
+  }, [appScriptUrl]);
+
   const [baseUrlOverride, setBaseUrlOverride] = useState<string>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("autoscore_base_url_override");
@@ -584,9 +594,51 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     }
   };
 
+  // Obtener la suma acumulada de calificaciones (Buenas, Malas y Total) de un taller o mecánico
+  const getMecanicoStats = (codigoMecanico?: string, taller?: string) => {
+    const codUpper = (codigoMecanico || "").trim().toUpperCase();
+    const tallerNorm = (taller || "").trim().toLowerCase();
+
+    // 1. Estadísticas consolidadas desde la base de datos oficial
+    const found = directorioMecanicos.find((m: any) => {
+      const mCod = (m.codigoMecanico || "").trim().toUpperCase();
+      const mTaller = (m.taller || "").trim().toLowerCase();
+      return (codUpper && mCod === codUpper) || (tallerNorm && mTaller === tallerNorm);
+    });
+
+    let basePos = found ? Number(found.totalPositivas || 0) : 0;
+    let baseNeg = found ? Number(found.totalNegativas || 0) : 0;
+
+    // 2. Sumar en vivo con el historial actual y directorioHistorial (incluyendo calificaciones optimistas en sesión)
+    const todosServicios = [...historial, ...directorioHistorial];
+    const idsVistos = new Set<number>();
+    let conteoPos = 0;
+    let conteoNeg = 0;
+
+    todosServicios.forEach((h: any) => {
+      if (!h || !h.idHistorial || idsVistos.has(h.idHistorial)) return;
+      idsVistos.add(h.idHistorial);
+      const matchCod = codUpper && (h.codigoMecanico || "").trim().toUpperCase() === codUpper;
+      const matchTaller = tallerNorm && (h.taller || "").trim().toLowerCase() === tallerNorm;
+      if (matchCod || matchTaller) {
+        const ev = (h.evaluacion || "").trim();
+        if (ev === "Bueno") conteoPos++;
+        else if (ev === "Malo") conteoNeg++;
+      }
+    });
+
+    const finalPos = Math.max(basePos, conteoPos);
+    const finalNeg = Math.max(baseNeg, conteoNeg);
+    const total = finalPos + finalNeg;
+    const porcentaje = total > 0 ? Math.round((finalPos / total) * 100) : 100;
+
+    return { pos: finalPos, neg: finalNeg, total, porcentaje };
+  };
+
   // Renderizar bloque de Evaluación y Calidad Técnica de un servicio
   const renderEvaluacionServicio = (row: HistorialRow, tallerReal: string, nombreMec: string) => {
     const isCarOwner = !!(loggedUser && selectedCar && String(loggedUser.idDueno).trim().toLowerCase() === String(selectedCar.idDueno).trim().toLowerCase());
+    const stats = getMecanicoStats(row.codigoMecanico, tallerReal);
 
     if (row.evaluacion) {
       const esBueno = row.evaluacion === "Bueno";
@@ -596,11 +648,18 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
             : "bg-red-500/10 border-red-500/25 text-red-300"
         }`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold font-display">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs font-bold font-display flex-wrap">
               <span className="text-base">{esBueno ? "👍" : "👎"}</span>
               <span className={esBueno ? "text-emerald-400 font-extrabold" : "text-red-400 font-extrabold"}>
                 {esBueno ? "Servicio Calificado Positivo por el Dueño" : "Reporte de Inconformidad Técnica del Dueño"}
+              </span>
+              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                esBueno
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                  : "bg-red-500/20 text-red-300 border-red-500/30"
+              }`}>
+                {esBueno ? `👍 Suma acumulada: ${stats.pos} buenas` : `👎 Suma acumulada: ${stats.neg} reportes`}
               </span>
             </div>
             {isCarOwner && (
@@ -650,6 +709,14 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             <span className="text-[10px] text-slate-400 block mt-0.5">
               Califica con Bueno o Malo para ayudar a la comunidad a determinar la reputación del taller.
             </span>
+            <div className="flex items-center gap-2 mt-1 text-[9.5px] font-mono text-slate-400">
+              <span>Suma total de calificaciones del taller:</span>
+              <span className="text-emerald-400 font-bold">👍 {stats.pos}</span>
+              <span>·</span>
+              <span className="text-red-400 font-bold">👎 {stats.neg}</span>
+              <span>·</span>
+              <span className="text-amber-400 font-bold">{stats.porcentaje}% Calidad</span>
+            </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <button
@@ -667,10 +734,14 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 setEvalComentario("");
                 setEvalError(null);
               }}
-              className="text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              className="text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group"
+              title={`Suma de calificaciones buenas acumuladas por este taller: ${stats.pos}`}
             >
               <span>👍</span>
               <span>Bueno</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[10px] font-black text-emerald-300 group-hover:bg-emerald-500/30">
+                {stats.pos}
+              </span>
             </button>
             <button
               type="button"
@@ -687,10 +758,14 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 setEvalComentario("");
                 setEvalError(null);
               }}
-              className="text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
+              className="text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group"
+              title={`Suma de quejas y reportes negativos acumulados por este taller: ${stats.neg}`}
             >
               <span>👎</span>
               <span>Malo</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-[10px] font-black text-red-300 group-hover:bg-red-500/30">
+                {stats.neg}
+              </span>
             </button>
           </div>
         </div>
@@ -1634,14 +1709,21 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                         {/* HISTORIAL OFICIAL DE MANTENIMIENTOS REGISTRADOS EN EL CERTIFICADO VIP */}
                         <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-4 space-y-3.5 text-left">
-                          <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                          <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-wrap gap-2">
                             <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                               <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                              <span>Mantenimientos Certificados Registrados ({historial.length})</span>
+                              <span>Mantenimientos Certificados ({historial.length})</span>
                             </span>
-                            <span className="text-[9px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/10 font-bold">
-                              Hoja de Vida Oficial
-                            </span>
+                            <div className="flex items-center gap-1.5 font-mono text-[9.5px]">
+                              <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de calificaciones buenas en este vehículo">
+                                <span>👍</span>
+                                <span>{historial.filter(h => h.evaluacion === "Bueno").length} Buenas</span>
+                              </span>
+                              <span className="text-red-400 bg-red-500/10 border border-red-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de reportes de inconformidad en este vehículo">
+                                <span>👎</span>
+                                <span>{historial.filter(h => h.evaluacion === "Malo").length} Reclamos</span>
+                              </span>
+                            </div>
                           </div>
 
                           <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
@@ -1959,11 +2041,21 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                     {/* BITÁCORA CRONOLÓGICA DE FIRMAS REGISTRADAS */}
                     <div className="space-y-3.5 text-left">
-                      <div className="flex justify-between items-center border-b border-white/10 pb-2">
+                      <div className="flex justify-between items-center border-b border-white/10 pb-2 flex-wrap gap-2">
                         <h5 className="text-[11px] font-mono font-bold uppercase tracking-widest text-emerald-400 flex items-center gap-1.5">
                           <ClipboardList className="w-4 h-4" />
-                          <span>Firmas de Mantenimientos Registradas ({historial.length})</span>
+                          <span>Firmas de Mantenimientos ({historial.length})</span>
                         </h5>
+                        <div className="flex items-center gap-1.5 font-mono text-[9.5px]">
+                          <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de calificaciones buenas en este vehículo">
+                            <span>👍</span>
+                            <span>{historial.filter(h => h.evaluacion === "Bueno").length} Buenas</span>
+                          </span>
+                          <span className="text-red-400 bg-red-500/10 border border-red-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de reportes de inconformidad en este vehículo">
+                            <span>👎</span>
+                            <span>{historial.filter(h => h.evaluacion === "Malo").length} Reclamos</span>
+                          </span>
+                        </div>
                       </div>
 
                       <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
@@ -2300,47 +2392,74 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             </div>
 
             <form onSubmit={handleGuardarEvaluacion} className="space-y-4">
-              {/* Selector Bueno / Malo */}
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
-                  ¿Cómo calificas la calidad técnica de este servicio?
-                </label>
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEvalTipo("Bueno");
-                      setEvalError(null);
-                    }}
-                    className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                      evalTipo === "Bueno"
-                        ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30 scale-[1.02]"
-                        : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
-                    }`}
-                  >
-                    <span className="text-2xl">👍</span>
-                    <span className="text-xs font-black">Bueno</span>
-                    <span className="text-[9px] opacity-80 text-center font-normal">Calidad aprobada</span>
-                  </button>
+              {/* Selector Bueno / Malo con la suma de todas las calificaciones */}
+              {(() => {
+                const modalStats = evalModalItem ? getMecanicoStats(evalModalItem.codigoMecanico, evalModalItem.taller) : { pos: 0, neg: 0, total: 0, porcentaje: 100 };
+                return (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 text-center">
+                      ¿Cómo calificas la calidad técnica de este servicio?
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEvalTipo("Bueno");
+                          setEvalError(null);
+                        }}
+                        className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer relative overflow-hidden ${
+                          evalTipo === "Bueno"
+                            ? "bg-emerald-500/20 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30 scale-[1.02]"
+                            : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-2xl">👍</span>
+                          <span className="text-xs font-black">Bueno</span>
+                        </div>
+                        {/* Suma de calificaciones buenas */}
+                        <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300">
+                          <span className="text-[11px] font-black">{modalStats.pos}</span>
+                          <span className="text-[9px] font-semibold">{modalStats.pos === 1 ? "aprobación" : "aprobaciones"}</span>
+                        </div>
+                        <span className="text-[9px] opacity-80 text-center font-normal">Calidad garantizada</span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEvalTipo("Malo");
-                      setEvalError(null);
-                    }}
-                    className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                      evalTipo === "Malo"
-                        ? "bg-red-500/20 border-red-500 text-red-300 ring-2 ring-red-500/30 scale-[1.02]"
-                        : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
-                    }`}
-                  >
-                    <span className="text-2xl">👎</span>
-                    <span className="text-xs font-black">Malo</span>
-                    <span className="text-[9px] opacity-80 text-center font-normal">Inconformidad / Falla</span>
-                  </button>
-                </div>
-              </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEvalTipo("Malo");
+                          setEvalError(null);
+                        }}
+                        className={`py-3 px-3 rounded-2xl border flex flex-col items-center gap-1.5 transition-all cursor-pointer relative overflow-hidden ${
+                          evalTipo === "Malo"
+                            ? "bg-red-500/20 border-red-500 text-red-300 ring-2 ring-red-500/30 scale-[1.02]"
+                            : "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-900"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-2xl">👎</span>
+                          <span className="text-xs font-black">Malo</span>
+                        </div>
+                        {/* Suma de calificaciones malas */}
+                        <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300">
+                          <span className="text-[11px] font-black">{modalStats.neg}</span>
+                          <span className="text-[9px] font-semibold">{modalStats.neg === 1 ? "reporte" : "reportes"}</span>
+                        </div>
+                        <span className="text-[9px] opacity-80 text-center font-normal">Inconformidad / Falla</span>
+                      </button>
+                    </div>
+
+                    {/* Suma consolidada de todas las calificaciones acumuladas */}
+                    <div className="mt-2.5 px-3 py-1.5 bg-slate-950/80 rounded-xl border border-white/5 flex items-center justify-between text-[10px]">
+                      <span className="text-slate-400 font-medium">Suma total de calificaciones del taller:</span>
+                      <span className="font-bold text-amber-400 font-mono">
+                        {modalStats.total} en total ({modalStats.pos} 👍 / {modalStats.neg} 👎) · {modalStats.porcentaje}% Calidad
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Formulario Dinámico según selección */}
               {evalTipo === "Malo" ? (
@@ -2531,35 +2650,43 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setFiltroTipoCalidad("todos")}
-                  className={`py-1.5 rounded-lg font-bold transition-all ${
-                    filtroTipoCalidad === "todos" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Todos ({directorioMecanicos.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroTipoCalidad("oro")}
-                  className={`py-1.5 rounded-lg font-bold transition-all ${
-                    filtroTipoCalidad === "oro" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Oro (≥90%)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroTipoCalidad("inconformidad")}
-                  className={`py-1.5 rounded-lg font-bold transition-all ${
-                    filtroTipoCalidad === "inconformidad" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  Con Quejas
-                </button>
-              </div>
+              {(() => {
+                const sumaTotalPos = directorioMecanicos.reduce((acc, m) => acc + Number(m.totalPositivas || 0), 0);
+                const sumaTotalNeg = directorioMecanicos.reduce((acc, m) => acc + Number(m.totalNegativas || 0), 0);
+                return (
+                  <div className="grid grid-cols-3 gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[10px]">
+                    <button
+                      type="button"
+                      onClick={() => setFiltroTipoCalidad("todos")}
+                      className={`py-1.5 rounded-lg font-bold transition-all ${
+                        filtroTipoCalidad === "todos" ? "bg-amber-500 text-slate-950 font-black shadow" : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Todos ({directorioMecanicos.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroTipoCalidad("oro")}
+                      className={`py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${
+                        filtroTipoCalidad === "oro" ? "bg-emerald-500 text-slate-950 font-black shadow" : "text-emerald-400/90 hover:text-emerald-300"
+                      }`}
+                    >
+                      <span>👍 Oro</span>
+                      <span className="opacity-90 font-mono">({sumaTotalPos})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFiltroTipoCalidad("inconformidad")}
+                      className={`py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${
+                        filtroTipoCalidad === "inconformidad" ? "bg-red-500 text-white font-black shadow" : "text-red-400/90 hover:text-red-300"
+                      }`}
+                    >
+                      <span>👎 Quejas</span>
+                      <span className="opacity-90 font-mono">({sumaTotalNeg})</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Listado con scroll */}
