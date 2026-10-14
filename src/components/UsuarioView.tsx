@@ -119,6 +119,37 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     }, 150);
   };
 
+  // Obtener fecha de solicitud del certificado con persistencia para el vehículo
+  const getFechaSolicitudCertificado = () => {
+    if (!selectedCar?.placa) return new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const key = `autoscore_fecha_solicitud_${selectedCar.placa}`;
+    let fecha = localStorage.getItem(key);
+    if (!fecha) {
+      fecha = new Date().toLocaleDateString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric"
+      });
+      try {
+        localStorage.setItem(key, fecha);
+      } catch (e) {}
+    }
+    return fecha;
+  };
+
+  // Formateador robusto y claro de fecha de mantenimiento/reparación
+  const formatFechaRegistro = (rawFecha?: string) => {
+    if (!rawFecha) return "Fecha no registrada";
+    const clean = String(rawFecha).split("T")[0].split(" ")[0].trim();
+    if (clean.includes("-")) {
+      const parts = clean.split("-");
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+    }
+    return clean;
+  };
+
   // Estados para el Directorio Público de Calidad Técnica de Talleres y Mecánicos
   const [showDirectorioTalleres, setShowDirectorioTalleres] = useState(false);
   const [directorioMecanicos, setDirectorioMecanicos] = useState<any[]>([]);
@@ -1625,13 +1656,14 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                         </div>
                         <div className="text-right text-[10px] text-slate-700 font-mono">
                           <div>Folio / Placa: <strong className="text-slate-900 font-bold">{selectedCar.placa}</strong></div>
+                          <div>Fecha de Solicitud de Certificado: <strong className="text-slate-900 font-bold">{getFechaSolicitudCertificado()}</strong></div>
                           <div>Fecha de Emisión: {new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</div>
                         </div>
                       </div>
                     </div>
 
                     {/* Sello de Autenticidad */}
-                    <div className="flex justify-between items-start mb-5 relative z-10">
+                    <div className="flex justify-between items-start mb-4 relative z-10">
                       <div>
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-mono font-bold uppercase tracking-wider border ${
                           selectedCar.estadoCertificado === "Vencido"
@@ -1666,7 +1698,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                     </div>
 
                     {/* Caja de Datos y Score en Grande (cert-data-box) */}
-                    <div className="cert-data-box bg-black/50 border border-white/10 rounded-2xl p-4 space-y-4 relative z-10">
+                    <div className="cert-data-box bg-black/50 border border-white/10 rounded-2xl p-4 space-y-3.5 relative z-10">
                       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
                         <div className="text-center sm:text-left">
                           <span className="text-[9px] text-slate-400 font-mono uppercase tracking-wider block">UNIDAD EVALUADA</span>
@@ -1687,6 +1719,26 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                           </span>
                         </div>
                       </div>
+
+                      {/* Metadatos Oficiales del Certificado: Fecha de Solicitud y Estado */}
+                      <div className="pt-2.5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-300">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 uppercase text-[9px]">Fecha de Solicitud de Certificado:</span>
+                          <strong className="text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded font-bold">
+                            📅 {getFechaSolicitudCertificado()}
+                          </strong>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 uppercase text-[9px]">Estado de Certificado:</span>
+                          <span className={`px-2 py-0.5 rounded font-bold text-[9px] ${
+                            selectedCar.estadoCertificado === "Activo"
+                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                              : "bg-red-500/20 text-red-400 border border-red-500/30"
+                          }`}>
+                            {selectedCar.estadoCertificado === "Activo" ? "VIGENTE / ACTIVO" : "VENCIDO"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Pie de Certificado (Hoja 1) - Idéntica en proporción y diseño al Certificado Simple */}
@@ -1697,7 +1749,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                           <span>Constancia Oficial de Salud Mecánica · Certificación VIP</span>
                         </div>
                         <p className="text-[10px] text-slate-300 max-w-[85%] mx-auto leading-normal">
-                          Documento oficial emitido y avalado por el Sistema AutoScore para validación de integridad técnica, comercial y legal.
+                          Documento oficial emitido a solicitud del propietario el día <strong>{getFechaSolicitudCertificado()}</strong> y avalado por el Sistema AutoScore para validación de integridad técnica, comercial y legal.
                         </p>
                         <p className="text-[9px] font-mono text-amber-400/90 font-bold pt-1 border-t border-white/10">
                           Página 1 de 2 · El anexo de reparaciones y mantenimientos detallados continúa en la Hoja 2 →
@@ -1717,9 +1769,9 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                   {/* ---------------- HOJA 2: ANEXO DE HISTORIAL Y REPARACIONES TÉCNICAS (VIP) ---------------- */}
                   {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
-                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4 print:mt-0">
+                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden print:overflow-visible bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4 print:mt-0 print:border-slate-800">
                       {/* Encabezado Oficial de Hoja 2 */}
-                      <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex justify-between items-center text-left">
+                      <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center text-left gap-2">
                         <div>
                           <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block">
                             AUTOSCORE · HOJA 2 DE 2
@@ -1731,12 +1783,12 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                             Vehículo: <strong className="text-white">{selectedCar.marca} {selectedCar.modelo} ({selectedCar.anio})</strong> · Placa: <strong className="text-amber-400">{selectedCar.placa}</strong> · Score: <strong className="text-emerald-400">{selectedCar.score}/100</strong>
                           </p>
                         </div>
-                        <div className="text-right text-[9.5px] font-mono text-slate-400 shrink-0">
-                          <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-bold block">
-                            Anexo Técnico VIP
+                        <div className="text-left sm:text-right text-[9.5px] font-mono text-slate-400 shrink-0">
+                          <span className="bg-amber-500/15 border border-amber-500/30 text-amber-300 px-2.5 py-1 rounded-lg font-bold inline-block shadow-sm">
+                            Fecha de Solicitud de Certificado: <strong>{getFechaSolicitudCertificado()}</strong>
                           </span>
                           <span className="text-[8.5px] text-slate-500 block mt-0.5">
-                            {new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            Emisión Oficial: {new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                           </span>
                         </div>
                       </div>
@@ -1780,31 +1832,41 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                         </div>
                       </div>
 
-                      {/* Listado Cronológico de Mantenimientos (cert-history-list) */}
-                      <div className="cert-history-list space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                      {/* Listado Cronológico de Mantenimientos y Reparaciones */}
+                      <div className="cert-history-list space-y-3.5 max-h-[500px] print:max-h-none overflow-y-auto print:overflow-visible pr-1">
                         {historial.map((row, idx) => {
                           const tel = row.telefonoMecanico || "";
                           const formattedTel = formatWhatsAppNumber(tel);
                           const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
                           const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
                           const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+                          const fechaReparacion = formatFechaRegistro(row.fecha);
 
                           return (
-                            <div key={idx} className="cert-timeline-item border-l-3 border-amber-500 pl-4 py-2.5 relative space-y-2 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
-                              {/* Fecha y Kilometraje */}
-                              <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
-                                <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
-                                  📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
-                                </span>
-                                <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
-                                  ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
-                                </span>
+                            <div key={idx} className="cert-timeline-item border-l-4 border-amber-500 pl-4 py-3 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md print:bg-white print:border-slate-300 print:shadow-none">
+                              {/* Fecha de la Reparación y Kilometraje destacados */}
+                              <div className="flex items-center justify-between text-[11px] font-mono text-slate-200 bg-slate-900/80 border border-white/10 px-3 py-1.5 rounded-lg flex-wrap gap-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-amber-400 font-bold">📅 Fecha de Reparación:</span>
+                                  <strong className="text-white bg-slate-800 px-2.5 py-0.5 rounded border border-white/10 font-black">
+                                    {fechaReparacion}
+                                  </strong>
+                                </div>
+                                <div className="flex items-center gap-1.5 font-black text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                                  <span>⚡ Kilometraje:</span>
+                                  <span>{row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km</span>
+                                </div>
                               </div>
                               
-                              {/* Trabajo Realizado */}
-                              <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
-                                {row.trabajoRealizado}
-                              </p>
+                              {/* Trabajo o Reparación Realizada */}
+                              <div className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-3 rounded-lg border border-white/10">
+                                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                                  Trabajo / Reparación Realizada:
+                                </span>
+                                <p className="text-slate-100 font-sans font-medium whitespace-pre-line text-[11.5px]">
+                                  {row.trabajoRealizado}
+                                </p>
+                              </div>
                               
                               {/* Taller y Mecánico Certificado */}
                               <div className="cert-workshop-box bg-[#0b0c10] border border-amber-500/20 rounded-xl p-2.5 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-2.5 shadow-md">

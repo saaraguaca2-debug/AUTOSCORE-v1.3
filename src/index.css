@@ -240,10 +240,14 @@ body {
   }
 
   /* Mostrar la lista completa de mantenimientos sin scroll ni corte en impresión */
-  .cert-history-list {
+  .cert-history-list,
+  .cert-history-list * {
     max-height: none !important;
-    height: auto !important;
     overflow: visible !important;
+  }
+
+  .cert-history-list {
+    height: auto !important;
     display: block !important;
   }
 
