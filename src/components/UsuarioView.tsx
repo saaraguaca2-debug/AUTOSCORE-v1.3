@@ -77,6 +77,48 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
   const [evalError, setEvalError] = useState<string | null>(null);
   const [evalSuccessNotice, setEvalSuccessNotice] = useState<string | null>(null);
 
+  // Estados de retroalimentación de ejecución de acciones en botones
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [openingEvalKey, setOpeningEvalKey] = useState<string | null>(null);
+
+  // Manejador de impresión con retroalimentación visual inmediata en el botón
+  const handlePrintDocument = (tipo: "certificado" | "firmas") => {
+    setIsPrinting(true);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        setIsPrinting(false);
+      }, 1500);
+    }, 250);
+  };
+
+  // Manejador de apertura de modal de evaluación con retroalimentación instantánea
+  const handleOpenEvaluacion = (
+    row: HistorialRow,
+    tallerReal: string,
+    nombreMec: string,
+    tipo: "Bueno" | "Malo"
+  ) => {
+    const key = `${row.idHistorial}_${tipo}`;
+    setOpeningEvalKey(key);
+    setTimeout(() => {
+      setEvalModalItem({
+        idHistorial: row.idHistorial,
+        taller: tallerReal,
+        nombreMecanico: nombreMec,
+        codigoMecanico: row.codigoMecanico,
+        trabajo: row.trabajoRealizado,
+        fecha: row.fecha,
+        calificacionPrevia: row.evaluacion,
+        comentarioPrevio: row.comentarioEvaluacion
+      });
+      setEvalTipo(tipo);
+      setEvalComentario(row.comentarioEvaluacion || "");
+      setEvalError(null);
+      setOpeningEvalKey(null);
+    }, 150);
+  };
+
   // Estados para el Directorio Público de Calidad Técnica de Talleres y Mecánicos
   const [showDirectorioTalleres, setShowDirectorioTalleres] = useState(false);
   const [directorioMecanicos, setDirectorioMecanicos] = useState<any[]>([]);
@@ -665,24 +707,22 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
             {isCarOwner && (
               <button
                 type="button"
-                onClick={() => {
-                  setEvalModalItem({
-                    idHistorial: row.idHistorial,
-                    taller: tallerReal,
-                    nombreMecanico: nombreMec,
-                    codigoMecanico: row.codigoMecanico,
-                    trabajo: row.trabajoRealizado,
-                    fecha: row.fecha,
-                    calificacionPrevia: row.evaluacion,
-                    comentarioPrevio: row.comentarioEvaluacion
-                  });
-                  setEvalTipo(row.evaluacion || "Bueno");
-                  setEvalComentario(row.comentarioEvaluacion || "");
-                  setEvalError(null);
-                }}
-                className="text-[9.5px] font-bold text-slate-400 hover:text-white px-2 py-0.5 rounded bg-white/5 border border-white/10 hover:border-white/20 transition-colors cursor-pointer"
+                disabled={openingEvalKey !== null}
+                onClick={() => handleOpenEvaluacion(row, tallerReal, nombreMec, row.evaluacion || "Bueno")}
+                className={`text-[9.5px] font-bold px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                  openingEvalKey === `${row.idHistorial}_${row.evaluacion || "Bueno"}`
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse"
+                    : "text-slate-400 hover:text-white bg-white/5 border-white/10 hover:border-white/20"
+                }`}
               >
-                Editar reseña ✏️
+                {openingEvalKey === `${row.idHistorial}_${row.evaluacion || "Bueno"}` ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                    <span>Cargando...</span>
+                  </>
+                ) : (
+                  <span>Editar reseña ✏️</span>
+                )}
               </button>
             )}
           </div>
@@ -700,6 +740,9 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     }
 
     if (isCarOwner) {
+      const isOpeningBueno = openingEvalKey === `${row.idHistorial}_Bueno`;
+      const isOpeningMalo = openingEvalKey === `${row.idHistorial}_Malo`;
+
       return (
         <div className="mt-2 p-2.5 rounded-xl bg-slate-900/60 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
           <div className="min-w-0">
@@ -721,48 +764,42 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              onClick={() => {
-                setEvalModalItem({
-                  idHistorial: row.idHistorial,
-                  taller: tallerReal,
-                  nombreMecanico: nombreMec,
-                  codigoMecanico: row.codigoMecanico,
-                  trabajo: row.trabajoRealizado,
-                  fecha: row.fecha
-                });
-                setEvalTipo("Bueno");
-                setEvalComentario("");
-                setEvalError(null);
-              }}
-              className="text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group"
+              disabled={openingEvalKey !== null}
+              onClick={() => handleOpenEvaluacion(row, tallerReal, nombreMec, "Bueno")}
+              className={`text-xs font-bold border px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group ${
+                isOpeningBueno
+                  ? "bg-emerald-500/30 text-emerald-300 border-emerald-400 ring-2 ring-emerald-500/40 animate-pulse"
+                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+              }`}
               title={`Suma de calificaciones buenas acumuladas por este taller: ${stats.pos}`}
             >
-              <span>👍</span>
-              <span>Bueno</span>
+              {isOpeningBueno ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-300" />
+              ) : (
+                <span>👍</span>
+              )}
+              <span>{isOpeningBueno ? "Abriendo..." : "Bueno"}</span>
               <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[10px] font-black text-emerald-300 group-hover:bg-emerald-500/30">
                 {stats.pos}
               </span>
             </button>
             <button
               type="button"
-              onClick={() => {
-                setEvalModalItem({
-                  idHistorial: row.idHistorial,
-                  taller: tallerReal,
-                  nombreMecanico: nombreMec,
-                  codigoMecanico: row.codigoMecanico,
-                  trabajo: row.trabajoRealizado,
-                  fecha: row.fecha
-                });
-                setEvalTipo("Malo");
-                setEvalComentario("");
-                setEvalError(null);
-              }}
-              className="text-xs font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group"
+              disabled={openingEvalKey !== null}
+              onClick={() => handleOpenEvaluacion(row, tallerReal, nombreMec, "Malo")}
+              className={`text-xs font-bold border px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm group ${
+                isOpeningMalo
+                  ? "bg-red-500/30 text-red-300 border-red-400 ring-2 ring-red-500/40 animate-pulse"
+                  : "bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/30"
+              }`}
               title={`Suma de quejas y reportes negativos acumulados por este taller: ${stats.neg}`}
             >
-              <span>👎</span>
-              <span>Malo</span>
+              {isOpeningMalo ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-red-300" />
+              ) : (
+                <span>👎</span>
+              )}
+              <span>{isOpeningMalo ? "Abriendo..." : "Malo"}</span>
               <span className="px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-[10px] font-black text-red-300 group-hover:bg-red-500/30">
                 {stats.neg}
               </span>
@@ -1652,57 +1689,27 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
                     </div>
 
-                    {/* Validación Pública y QR en Hoja 1 (Solo Certificado Completo VIP) */}
-                    {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
-                      <div className="mt-4 space-y-3 relative z-10">
-                        <div className="cert-qr-container bg-slate-900/60 border border-amber-500/20 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center gap-3.5 text-left">
-                          <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
-                            <img
-                              src={generateQRCodeUrl()}
-                              alt="QR Validación Certificado"
-                              className="w-24 h-24 cert-qr-img block object-contain"
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                          <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                            <div className="flex items-center justify-center sm:justify-start gap-1.5 flex-wrap">
-                              <span className="inline-block text-[9px] font-mono font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded uppercase">
-                                Verificación Pública en Línea
-                              </span>
-                              <span className="text-[10px] font-mono text-slate-400">
-                                Folio: <strong className="text-slate-200">{selectedCar.placa}</strong>
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-white leading-tight font-bold">
-                              Escanear para validar autenticidad en tiempo real
-                            </p>
-                            <p className="text-[9.5px] text-slate-300 leading-normal">
-                              Cualquier interesado, comprador o aseguradora puede verificar este certificado directamente en la plataforma oficial de AutoScore.
-                            </p>
-                            <div className="grid grid-cols-3 gap-2 pt-1.5 text-[9.5px] font-mono text-slate-300 border-t border-white/10">
-                              <div>Km: <strong className="text-white">{historial.length > 0 && historial[0]?.kilometraje != null ? `${Number(historial[0].kilometraje).toLocaleString()} km` : "0 km"}</strong></div>
-                              <div>Firmas: <strong className="text-amber-400">{historial.length}</strong></div>
-                              <div>Talleres: <strong className="text-emerald-400">{Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}</strong></div>
-                            </div>
-                          </div>
+                    {/* Pie de Certificado (Hoja 1) - Idéntica en proporción y diseño al Certificado Simple */}
+                    {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" ? (
+                      <div className="mt-4 p-4 bg-slate-950/60 border border-amber-500/25 rounded-2xl text-center relative z-10 space-y-1.5">
+                        <div className="flex items-center justify-center gap-1.5 text-amber-400 font-bold text-xs">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Constancia Oficial de Salud Mecánica · Certificación VIP</span>
                         </div>
-
-                        {/* Nota al pie de Hoja 1 */}
-                        <div className="p-2.5 bg-slate-950/60 border border-white/10 rounded-xl text-center text-[10px] text-slate-400">
-                          <span className="font-semibold text-slate-200">Constancia Oficial de Salud Mecánica emitida por AutoScore.</span>
-                          <span className="block text-[9px] text-amber-400/90 font-mono mt-0.5 font-bold">
-                            Página 1 de 2 · El anexo de reparaciones y mantenimientos detallados continúa en la Hoja 2.
-                          </span>
-                        </div>
+                        <p className="text-[10px] text-slate-300 max-w-[85%] mx-auto leading-normal">
+                          Documento oficial emitido y avalado por el Sistema AutoScore para validación de integridad técnica, comercial y legal.
+                        </p>
+                        <p className="text-[9px] font-mono text-amber-400/90 font-bold pt-1 border-t border-white/10">
+                          Página 1 de 2 · El anexo de reparaciones y mantenimientos detallados continúa en la Hoja 2 →
+                        </p>
                       </div>
-                    )}
-
-                    {/* Información en Certificado Simple o Vencido */}
-                    {(activeCertType === "simple" || selectedCar.estadoCertificado === "Vencido") && (
+                    ) : (
                       <div className="mt-4 p-4 bg-slate-950/60 border border-white/10 rounded-2xl text-center relative z-10 space-y-1">
                         <p className="text-xs text-slate-300 font-semibold leading-normal">Constancia Oficial de Score emitida para uso personal.</p>
                         <p className="text-[10px] text-slate-400 max-w-[85%] mx-auto leading-normal">
-                          Para acceder a la auditoría de intervenciones y compartir con compradores, seleccione el <strong>Certificado Completo VIP</strong>.
+                          {selectedCar.estadoCertificado === "Vencido"
+                            ? "Suscripción vencida. Solo se permite vista en pantalla. Renueva para reactivar descargas y modo VIP."
+                            : "Para acceder a la auditoría de intervenciones y compartir con compradores, seleccione el Certificado Completo VIP."}
                         </p>
                       </div>
                     )}
@@ -1710,7 +1717,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                   {/* ---------------- HOJA 2: ANEXO DE HISTORIAL Y REPARACIONES TÉCNICAS (VIP) ---------------- */}
                   {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
-                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4">
+                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4 print:mt-0">
                       {/* Encabezado Oficial de Hoja 2 */}
                       <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex justify-between items-center text-left">
                         <div>
@@ -1734,17 +1741,40 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                         </div>
                       </div>
 
-                      {/* Resumen de Trazabilidad */}
-                      <div className="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-white/5 mb-3 text-[10px] font-mono flex-wrap gap-2">
-                        <div className="flex items-center gap-1.5 text-slate-300 font-bold">
-                          <Wrench className="w-3.5 h-3.5 text-amber-500" />
-                          <span>{historial.length} Mantenimientos Certificados</span>
+                      {/* Resumen de Trazabilidad con QR de Verificación Pública */}
+                      <div className="flex flex-col sm:flex-row items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-white/5 mb-3 text-[10px] font-mono gap-3 text-left">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-white p-1.5 rounded-lg shrink-0 shadow">
+                            <img
+                              src={generateQRCodeUrl()}
+                              alt="QR Validación Certificado"
+                              className="w-14 h-14 cert-qr-img block object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                          </div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase">
+                                Verificación Oficial en Línea
+                              </span>
+                              <span className="text-slate-400 text-[9px]">Folio: <strong className="text-slate-200">{selectedCar.placa}</strong></span>
+                            </div>
+                            <p className="text-[10px] text-white font-bold leading-tight">
+                              Escanear código QR para validar este historial en tiempo real
+                            </p>
+                            <div className="flex items-center gap-2 text-[9px] text-slate-300">
+                              <span>Total: <strong className="text-white">{historial.length} servicios</strong></span>
+                              <span>•</span>
+                              <span>Talleres: <strong className="text-emerald-400">{Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}</strong></span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 font-bold text-[10px]">
                             👍 {historial.filter(h => h.evaluacion === "Bueno").length} Aprobadas
                           </span>
-                          <span className="text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20 font-bold">
+                          <span className="text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full border border-red-500/20 font-bold text-[10px]">
                             👎 {historial.filter(h => h.evaluacion === "Malo").length} Reclamos
                           </span>
                         </div>
@@ -1932,11 +1962,25 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
                     ) : (
                       <button
-                        onClick={() => window.print()}
-                        className="w-full bg-slate-950 hover:bg-slate-900 border border-amber-500/25 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                        onClick={() => handlePrintDocument("certificado")}
+                        disabled={isPrinting}
+                        className={`w-full border py-3.5 rounded-2xl text-xs font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer ${
+                          isPrinting
+                            ? "bg-amber-500/20 border-amber-500/40 text-amber-300 animate-pulse cursor-wait"
+                            : "bg-slate-950 hover:bg-slate-900 border-amber-500/25 text-white"
+                        }`}
                       >
-                        <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
-                        <span>Imprimir / Descargar Certificado en PDF</span>
+                        {isPrinting ? (
+                          <>
+                            <RefreshCw className="w-4.5 h-4.5 text-amber-400 animate-spin" />
+                            <span>Preparando e imprimiendo documento PDF...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4.5 h-4.5 text-amber-500 animate-bounce" />
+                            <span>Imprimir / Descargar Certificado en PDF</span>
+                          </>
+                        )}
                       </button>
                     )}
                     
@@ -2264,11 +2308,25 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
                     ) : (
                       <button
-                        onClick={() => window.print()}
-                        className="w-full bg-slate-950 hover:bg-slate-900 border border-emerald-500/30 py-3.5 rounded-2xl text-xs text-white font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer"
+                        onClick={() => handlePrintDocument("firmas")}
+                        disabled={isPrinting}
+                        className={`w-full border py-3.5 rounded-2xl text-xs font-black text-center flex items-center justify-center gap-2 shadow-xl transition-all active:scale-[0.98] cursor-pointer ${
+                          isPrinting
+                            ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 animate-pulse cursor-wait"
+                            : "bg-slate-950 hover:bg-slate-900 border-emerald-500/30 text-white"
+                        }`}
                       >
-                        <Download className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
-                        <span>Imprimir / Descargar Bitácora de Firmas en PDF</span>
+                        {isPrinting ? (
+                          <>
+                            <RefreshCw className="w-4.5 h-4.5 text-emerald-400 animate-spin" />
+                            <span>Preparando bitácora de firmas en PDF...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-4.5 h-4.5 text-emerald-400 animate-bounce" />
+                            <span>Imprimir / Descargar Bitácora de Firmas en PDF</span>
+                          </>
+                        )}
                       </button>
                     )}
 
@@ -2616,7 +2674,10 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                   }`}
                 >
                   {submittingEval ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-current" />
+                      <span>Guardando calificación...</span>
+                    </>
                   ) : (
                     <>
                       <Check className="w-4 h-4" />

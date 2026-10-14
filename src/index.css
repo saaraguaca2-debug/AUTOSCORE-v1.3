@@ -160,7 +160,7 @@ body {
   }
 
   /* Resetear lienzo completo para fondo blanco puro e impresión nítida */
-  body, html, #root, main {
+  body, html, #root, main, div {
     background: #ffffff !important;
     background-image: none !important;
     color: #0f172a !important;
@@ -183,6 +183,7 @@ body {
     background: #ffffff !important;
     padding: 0 !important;
     margin: 0 auto !important;
+    overflow: visible !important;
   }
 
   /* Encabezado Oficial exclusivo para impresión */
@@ -210,19 +211,22 @@ body {
     color: #0f172a !important;
     box-shadow: none !important;
     border-radius: 12px !important;
-    padding: 20px !important;
+    padding: 16px 20px !important;
     margin: 0 0 16px 0 !important;
     box-sizing: border-box !important;
+    overflow: visible !important;
   }
 
-  /* Hoja 1: Idéntica al Certificado Simple (con QR y verificación VIP) - Garantizada en Página 1 */
+  /* Hoja 1: Idéntica al Certificado Simple - Garantizada en Página 1 */
   .cert-page-1 {
     page-break-after: always !important;
     break-after: page !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    min-height: auto !important;
+    height: auto !important;
+    max-height: 250mm !important;
     margin-bottom: 0 !important;
+    overflow: visible !important;
   }
 
   /* Hoja 2: Lista de reparaciones y mantenimientos - Garantizada en Página 2 */
@@ -232,6 +236,7 @@ body {
     margin-top: 0 !important;
     page-break-inside: auto !important;
     break-inside: auto !important;
+    overflow: visible !important;
   }
 
   /* Mostrar la lista completa de mantenimientos sin scroll ni corte en impresión */
@@ -370,12 +375,12 @@ body {
   }
 
   .cert-qr-img {
-    width: 90px !important;
-    height: 90px !important;
-    min-width: 90px !important;
-    min-height: 90px !important;
-    max-width: 90px !important;
-    max-height: 90px !important;
+    width: 65px !important;
+    height: 65px !important;
+    min-width: 60px !important;
+    min-height: 60px !important;
+    max-width: 75px !important;
+    max-height: 75px !important;
     display: block !important;
     object-fit: contain !important;
     margin: 0 auto !important;
