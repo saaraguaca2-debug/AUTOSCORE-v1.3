@@ -1570,8 +1570,8 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 </div>
               </div>
 
-              {/* Contenedor Físico Imprimible del Certificado */}
-              <div className={`cert-printable-card relative rounded-3xl p-5 border overflow-hidden ${
+              {/* Contenedor Físico Imprimible del Certificado (HOJA 1) */}
+              <div className={`cert-printable-card cert-page-1 relative rounded-3xl p-5 border overflow-hidden ${
                 selectedCar.estadoCertificado !== "Vencido" && activeCertType === "completo"
                   ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
                   : selectedCar.estadoCertificado === "Vencido"
@@ -1652,205 +1652,54 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
                     </div>
 
-                    {/* Resumen de Auditoría y QR de Validación para Compradores (Solo Certificado Completo) */}
-                    {activeCertType === "completo" && (
-                      <div className="mt-4 space-y-3.5 relative z-10">
-                        <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-4 space-y-3 text-left">
-                          <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-500 flex items-center gap-1.5">
-                              <ClipboardList className="w-3.5 h-3.5" />
-                              <span>Auditoría de Salud Mecánica</span>
-                            </span>
-                            <span className="text-[10px] font-mono text-slate-300 bg-white/5 px-2 py-0.5 rounded border border-white/10">
-                              {historial.length} Firmas en Taller
-                            </span>
+                    {/* Validación Pública y QR en Hoja 1 (Solo Certificado Completo VIP) */}
+                    {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
+                      <div className="mt-4 space-y-3 relative z-10">
+                        <div className="cert-qr-container bg-slate-900/60 border border-amber-500/20 rounded-2xl p-3.5 flex flex-col sm:flex-row items-center gap-3.5 text-left">
+                          <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
+                            <img
+                              src={generateQRCodeUrl()}
+                              alt="QR Validación Certificado"
+                              className="w-24 h-24 cert-qr-img block object-contain"
+                              referrerPolicy="no-referrer"
+                            />
                           </div>
-
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div className="bg-black/40 p-2.5 rounded-xl border border-white/5">
-                              <span className="text-[9px] text-slate-400 block font-mono">Último Kilometraje:</span>
-                              <strong className="text-white font-mono text-sm block mt-0.5">
-                                {historial.length > 0 && historial[0]?.kilometraje != null
-                                  ? `${Number(historial[0].kilometraje).toLocaleString()} km`
-                                  : "0 km"}
-                              </strong>
-                            </div>
-                            <div className="bg-black/40 p-2.5 rounded-xl border border-white/5">
-                              <span className="text-[9px] text-slate-400 block font-mono">Talleres Auditores:</span>
-                              <strong className="text-amber-400 font-mono text-sm block mt-0.5">
-                                {Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length} Talleres
-                              </strong>
-                            </div>
-                          </div>
-
-                          {/* QR Oficial de Validación Pública del Certificado para Compradores */}
-                          <div className="cert-qr-container pt-2 border-t border-white/5 flex flex-col sm:flex-row items-center gap-3.5 bg-black/40 p-3 rounded-xl border border-amber-500/10">
-                            <div className="bg-white p-2 rounded-xl shrink-0 shadow-md">
-                              <img
-                                src={generateQRCodeUrl()}
-                                alt="QR Validación Certificado"
-                                className="w-24 h-24 block"
-                                referrerPolicy="no-referrer"
-                              />
-                            </div>
-                            <div className="space-y-1 text-center sm:text-left">
+                          <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                            <div className="flex items-center justify-center sm:justify-start gap-1.5 flex-wrap">
                               <span className="inline-block text-[9px] font-mono font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded uppercase">
-                                Verificación Pública
+                                Verificación Pública en Línea
                               </span>
-                              <p className="text-[11px] text-white leading-tight font-bold">
-                                Escanear para validar autenticidad en tiempo real
-                              </p>
-                              <p className="text-[9px] text-slate-300 leading-normal">
-                                Cualquier interesado, comprador o aseguradora puede verificar este certificado directamente en la plataforma oficial de AutoScore.
-                              </p>
+                              <span className="text-[10px] font-mono text-slate-400">
+                                Folio: <strong className="text-slate-200">{selectedCar.placa}</strong>
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-white leading-tight font-bold">
+                              Escanear para validar autenticidad en tiempo real
+                            </p>
+                            <p className="text-[9.5px] text-slate-300 leading-normal">
+                              Cualquier interesado, comprador o aseguradora puede verificar este certificado directamente en la plataforma oficial de AutoScore.
+                            </p>
+                            <div className="grid grid-cols-3 gap-2 pt-1.5 text-[9.5px] font-mono text-slate-300 border-t border-white/10">
+                              <div>Km: <strong className="text-white">{historial.length > 0 && historial[0]?.kilometraje != null ? `${Number(historial[0].kilometraje).toLocaleString()} km` : "0 km"}</strong></div>
+                              <div>Firmas: <strong className="text-amber-400">{historial.length}</strong></div>
+                              <div>Talleres: <strong className="text-emerald-400">{Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}</strong></div>
                             </div>
                           </div>
                         </div>
 
-                        {/* HISTORIAL OFICIAL DE MANTENIMIENTOS REGISTRADOS EN EL CERTIFICADO VIP */}
-                        <div className="bg-slate-900/40 border border-white/10 rounded-2xl p-4 space-y-3.5 text-left">
-                          <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-wrap gap-2">
-                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                              <Wrench className="w-3.5 h-3.5 text-amber-400" />
-                              <span>Mantenimientos Certificados ({historial.length})</span>
-                            </span>
-                            <div className="flex items-center gap-1.5 font-mono text-[9.5px]">
-                              <span className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de calificaciones buenas en este vehículo">
-                                <span>👍</span>
-                                <span>{historial.filter(h => h.evaluacion === "Bueno").length} Buenas</span>
-                              </span>
-                              <span className="text-red-400 bg-red-500/10 border border-red-500/25 px-2 py-0.5 rounded-full font-bold flex items-center gap-1" title="Suma de reportes de inconformidad en este vehículo">
-                                <span>👎</span>
-                                <span>{historial.filter(h => h.evaluacion === "Malo").length} Reclamos</span>
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
-                            {historial.map((row, idx) => {
-                              const tel = row.telefonoMecanico || "";
-                              const formattedTel = formatWhatsAppNumber(tel);
-                              const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
-                              const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
-                              const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
-
-                              return (
-                                <div key={idx} className="cert-timeline-item border-l-3 border-amber-500 pl-4 py-2.5 relative space-y-2 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
-                                  {/* Fecha y Kilometraje */}
-                                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
-                                    <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
-                                      📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
-                                    </span>
-                                    <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
-                                      ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
-                                    </span>
-                                  </div>
-                                  
-                                  {/* Trabajo Realizado */}
-                                  <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
-                                    {row.trabajoRealizado}
-                                  </p>
-                                  
-                                  {/* Taller y Mecánico Certificado */}
-                                  <div className="cert-workshop-box bg-[#0b0c10] border border-amber-500/20 rounded-xl p-2.5 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-2.5 shadow-md">
-                                    <div className="text-left space-y-0.5">
-                                      <div className="flex items-center gap-1.5">
-                                        <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                        <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setActiveTecnicoModal({
-                                              taller: tallerReal,
-                                              codigo: row.codigoMecanico,
-                                              nombreMecanico: nombreMec,
-                                              mecanicoNombre: nombreMec,
-                                              telefono: tel,
-                                              fecha: row.fecha,
-                                              kilometraje: row.kilometraje,
-                                              trabajo: row.trabajoRealizado,
-                                              trabajoRealizado: row.trabajoRealizado
-                                            });
-                                          }}
-                                          className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
-                                        >
-                                          {tallerReal}
-                                        </button>
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-300">
-                                        <div className="flex items-center gap-1 text-slate-200 font-medium">
-                                          <User className="w-3 h-3 text-emerald-400 shrink-0" />
-                                          <span>Mecánico: <strong className="text-white font-bold">{nombreMec}</strong></span>
-                                        </div>
-                                        {maskedCode && <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>}
-                                        {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
-                                      </div>
-                                    </div>
-                                    
-                                    {/* Botón WhatsApp de Verificación (no-print) */}
-                                    <div className="no-print">
-                                      {(() => {
-                                        const hasPhone = !!formattedTel;
-                                        const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
-                                        const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
-                                        const directTextMsg = `Hola ${targetName}. Tengo en mano el Certificado Oficial AutoScore VIP del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) donde figura que su taller realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la autenticidad de este registro técnico? Muchas gracias.`;
-                                        
-                                        return (
-                                          <a
-                                            href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-2.5 py-1.5 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
-                                          >
-                                            <Phone className="w-3 h-3 shrink-0 fill-current" />
-                                            <span>Verificar en WhatsApp</span>
-                                            <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
-                                          </a>
-                                        );
-                                      })()}
-                                    </div>
-                                  </div>
-
-                                  {/* Evaluación del Servicio por el Dueño (Bueno/Malo) */}
-                                  {renderEvaluacionServicio(row, tallerReal, nombreMec)}
-                                </div>
-                              );
-                            })}
-
-                            {historial.length === 0 && (
-                              <div className="p-5 bg-slate-950/60 border border-white/10 rounded-2xl text-center space-y-1.5">
-                                <PenTool className="w-7 h-7 text-slate-500 mx-auto" />
-                                <p className="text-xs text-slate-200 font-bold">Sin mantenimientos registrados aún en la base de datos.</p>
-                                <p className="text-[10px] text-slate-400">
-                                  Los servicios y reparaciones realizadas en talleres autorizados aparecerán aquí automáticamente una vez estampada la firma del mecánico.
-                                </p>
-                              </div>
-                            )}
-                          </div>
+                        {/* Nota al pie de Hoja 1 */}
+                        <div className="p-2.5 bg-slate-950/60 border border-white/10 rounded-xl text-center text-[10px] text-slate-400">
+                          <span className="font-semibold text-slate-200">Constancia Oficial de Salud Mecánica emitida por AutoScore.</span>
+                          <span className="block text-[9px] text-amber-400/90 font-mono mt-0.5 font-bold">
+                            Página 1 de 2 · El anexo de reparaciones y mantenimientos detallados continúa en la Hoja 2.
+                          </span>
                         </div>
-
-                        {/* Directorio de Talleres Auditores */}
-                        {historial.length > 0 && (
-                          <div className="pt-2 border-t border-white/5 space-y-2 text-left">
-                            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
-                              Talleres Certificados que han auditado este vehículo ({Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}):
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).map((tall, tIdx) => (
-                                <span key={tIdx} className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                  <Wrench className="w-3 h-3" />
-                                  <span>{tall}</span>
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     )}
 
-                    {/* Información en Certificado Simple */}
-                    {activeCertType === "simple" && (
-                      <div className="mt-5 p-4 bg-slate-950/60 border border-white/10 rounded-2xl text-center relative z-10 space-y-1">
+                    {/* Información en Certificado Simple o Vencido */}
+                    {(activeCertType === "simple" || selectedCar.estadoCertificado === "Vencido") && (
+                      <div className="mt-4 p-4 bg-slate-950/60 border border-white/10 rounded-2xl text-center relative z-10 space-y-1">
                         <p className="text-xs text-slate-300 font-semibold leading-normal">Constancia Oficial de Score emitida para uso personal.</p>
                         <p className="text-[10px] text-slate-400 max-w-[85%] mx-auto leading-normal">
                           Para acceder a la auditoría de intervenciones y compartir con compradores, seleccione el <strong>Certificado Completo VIP</strong>.
@@ -1858,6 +1707,175 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
                     )}
                   </div>
+
+                  {/* ---------------- HOJA 2: ANEXO DE HISTORIAL Y REPARACIONES TÉCNICAS (VIP) ---------------- */}
+                  {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
+                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4">
+                      {/* Encabezado Oficial de Hoja 2 */}
+                      <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex justify-between items-center text-left">
+                        <div>
+                          <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block">
+                            AUTOSCORE · HOJA 2 DE 2
+                          </span>
+                          <h3 className="text-base font-display font-black text-white">
+                            Anexo Oficial: Historial de Reparaciones y Mantenimientos
+                          </h3>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            Vehículo: <strong className="text-white">{selectedCar.marca} {selectedCar.modelo} ({selectedCar.anio})</strong> · Placa: <strong className="text-amber-400">{selectedCar.placa}</strong> · Score: <strong className="text-emerald-400">{selectedCar.score}/100</strong>
+                          </p>
+                        </div>
+                        <div className="text-right text-[9.5px] font-mono text-slate-400 shrink-0">
+                          <span className="bg-amber-500/10 border border-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-bold block">
+                            Anexo Técnico VIP
+                          </span>
+                          <span className="text-[8.5px] text-slate-500 block mt-0.5">
+                            {new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Resumen de Trazabilidad */}
+                      <div className="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-white/5 mb-3 text-[10px] font-mono flex-wrap gap-2">
+                        <div className="flex items-center gap-1.5 text-slate-300 font-bold">
+                          <Wrench className="w-3.5 h-3.5 text-amber-500" />
+                          <span>{historial.length} Mantenimientos Certificados</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 font-bold">
+                            👍 {historial.filter(h => h.evaluacion === "Bueno").length} Aprobadas
+                          </span>
+                          <span className="text-red-400 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20 font-bold">
+                            👎 {historial.filter(h => h.evaluacion === "Malo").length} Reclamos
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Listado Cronológico de Mantenimientos (cert-history-list) */}
+                      <div className="cert-history-list space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                        {historial.map((row, idx) => {
+                          const tel = row.telefonoMecanico || "";
+                          const formattedTel = formatWhatsAppNumber(tel);
+                          const tallerReal = row.taller && row.taller !== "Taller Independiente" ? row.taller : "Taller Autorizado AutoScore";
+                          const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
+                          const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
+
+                          return (
+                            <div key={idx} className="cert-timeline-item border-l-3 border-amber-500 pl-4 py-2.5 relative space-y-2 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
+                              {/* Fecha y Kilometraje */}
+                              <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
+                                <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
+                                  📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
+                                </span>
+                                <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
+                                  ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
+                                </span>
+                              </div>
+                              
+                              {/* Trabajo Realizado */}
+                              <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                {row.trabajoRealizado}
+                              </p>
+                              
+                              {/* Taller y Mecánico Certificado */}
+                              <div className="cert-workshop-box bg-[#0b0c10] border border-amber-500/20 rounded-xl p-2.5 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-2.5 shadow-md">
+                                <div className="text-left space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wide">Taller:</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveTecnicoModal({
+                                          taller: tallerReal,
+                                          codigo: row.codigoMecanico,
+                                          nombreMecanico: nombreMec,
+                                          mecanicoNombre: nombreMec,
+                                          telefono: tel,
+                                          fecha: row.fecha,
+                                          kilometraje: row.kilometraje,
+                                          trabajo: row.trabajoRealizado,
+                                          trabajoRealizado: row.trabajoRealizado
+                                        });
+                                      }}
+                                      className="font-black text-white text-[11px] uppercase tracking-wide hover:text-amber-400 transition-colors text-left cursor-pointer"
+                                    >
+                                      {tallerReal}
+                                    </button>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-slate-300">
+                                    <div className="flex items-center gap-1 text-slate-200 font-medium">
+                                      <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      <span>Mecánico: <strong className="text-white font-bold">{nombreMec}</strong></span>
+                                    </div>
+                                    {maskedCode && <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>}
+                                    {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
+                                  </div>
+                                </div>
+                                
+                                {/* Botón WhatsApp de Verificación (no-print) */}
+                                <div className="no-print">
+                                  {(() => {
+                                    const hasPhone = !!formattedTel;
+                                    const finalPhone = hasPhone ? formattedTel : formatWhatsAppNumber(adminPhoneEnv);
+                                    const targetName = hasPhone ? (row.taller || "Taller") : "Soporte Técnico";
+                                    const directTextMsg = `Hola ${targetName}. Tengo en mano el Certificado Oficial AutoScore VIP del vehículo ${selectedCar?.marca || ""} ${selectedCar?.modelo || ""} (Placa: ${selectedCar?.placa || ""}) donde figura que su taller realizó el siguiente trabajo el día ${row.fecha ? row.fecha.split(" ")[0] : ""} con ${row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km:\n\n"${row.trabajoRealizado || ""}"\n\n¿Podrían confirmarme la autenticidad de este registro técnico? Muchas gracias.`;
+                                    
+                                    return (
+                                      <a
+                                        href={`https://wa.me/${finalPhone}?text=${encodeURIComponent(directTextMsg)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black px-2.5 py-1.5 rounded-lg text-[9.5px] flex items-center justify-center gap-1.5 transition-all active:scale-95 shrink-0 shadow-lg border border-emerald-400/20 cursor-pointer"
+                                      >
+                                        <Phone className="w-3 h-3 shrink-0 fill-current" />
+                                        <span>Verificar en WhatsApp</span>
+                                        <ExternalLink className="w-2.5 h-2.5 opacity-85 shrink-0" />
+                                      </a>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+
+                              {/* Evaluación del Servicio por el Dueño (Bueno/Malo) */}
+                              {renderEvaluacionServicio(row, tallerReal, nombreMec)}
+                            </div>
+                          );
+                        })}
+
+                        {historial.length === 0 && (
+                          <div className="p-5 bg-slate-950/60 border border-white/10 rounded-2xl text-center space-y-1.5">
+                            <PenTool className="w-7 h-7 text-slate-500 mx-auto" />
+                            <p className="text-xs text-slate-200 font-bold">Sin mantenimientos registrados aún en la base de datos.</p>
+                            <p className="text-[10px] text-slate-400">
+                              Los servicios y reparaciones realizadas en talleres autorizados aparecerán aquí automáticamente una vez estampada la firma del mecánico.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Directorio de Talleres Auditores */}
+                      {historial.length > 0 && (
+                        <div className="pt-3 border-t border-white/5 space-y-2 text-left mt-3">
+                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
+                            Talleres Certificados que han auditado este vehículo ({Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).length}):
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {Array.from(new Set(historial.map(h => h.taller).filter(Boolean))).map((tall, tIdx) => (
+                              <span key={tIdx} className="text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                <Wrench className="w-3 h-3" />
+                                <span>{tall}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pie de Página de Hoja 2 */}
+                      <div className="mt-3 pt-2 border-t border-white/5 text-center text-[9px] font-mono text-slate-500">
+                        AutoScore Certificación Oficial · Página 2 de 2 · Trazabilidad y Mantenimientos Validados
+                      </div>
+                    </div>
+                  )}
 
                   {/* OPCIONES DE COMPARTIR Y ACCIONES (no-print) - Bloqueado si está vencido */}
                   {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
