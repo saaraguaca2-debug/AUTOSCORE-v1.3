@@ -154,7 +154,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200">
+    <div className="min-h-screen bg-[#050505] text-slate-100 flex flex-col selection:bg-amber-500/30 selection:text-amber-200 print:min-h-0 print:h-auto print:block print:bg-white print:p-0 print:m-0">
       
       {/* 1. Barra de Conexión a Base de Datos */}
       <div className="no-print">
@@ -176,10 +176,10 @@ export default function App() {
       )}
 
       {/* 3. Contenedor Principal con chasis estilo iPhone/Smartphone en Desktop */}
-      <main className="flex-1 flex flex-col justify-start items-center w-full max-w-7xl mx-auto py-4 px-2 sm:px-4 mb-20 print:p-0 print:m-0 print:max-w-full print:overflow-visible print:h-auto">
+      <main className="flex-1 flex flex-col justify-start items-center w-full max-w-7xl mx-auto py-4 px-2 sm:px-4 mb-20 print:p-0 print:m-0 print:max-w-full print:overflow-visible print:h-auto print:block print:flex-none print:border-none">
         
         {/* Chasis de Dispositivo Móvil en Pantallas Grandes para emulación real */}
-        <div className="w-full max-w-md bg-slate-950/20 backdrop-blur-md sm:border sm:border-white/10 sm:rounded-[36px] sm:shadow-2xl overflow-hidden min-h-[720px] flex flex-col relative sm:ring-1 sm:ring-white/5 sm:glow-silver/10 print:max-w-full print:border-none print:shadow-none print:bg-transparent print:overflow-visible print:min-h-0 print:h-auto">
+        <div className="w-full max-w-md bg-slate-950/20 backdrop-blur-md sm:border sm:border-white/10 sm:rounded-[36px] sm:shadow-2xl overflow-hidden min-h-[720px] flex flex-col relative sm:ring-1 sm:ring-white/5 sm:glow-silver/10 print:max-w-full print:border-none print:shadow-none print:bg-transparent print:overflow-visible print:min-h-0 print:h-auto print:block print:flex-none print:p-0 print:m-0">
           
           {/* Cámara Notch para estética smartphone premium */}
           <div className="hidden sm:flex justify-center w-full pt-3 pb-1 bg-black/40 border-b border-white/5 no-print">
@@ -191,7 +191,7 @@ export default function App() {
           </div>
 
           {/* Vistas dinámicas */}
-          <div className="flex-1 flex flex-col py-2 w-full max-w-full overflow-x-hidden print:overflow-visible print:h-auto">
+          <div className="flex-1 flex flex-col py-2 w-full max-w-full overflow-x-hidden print:overflow-visible print:h-auto print:p-0 print:m-0 print:block print:flex-none">
             {(() => {
               switch (currentView) {
                 case "home":

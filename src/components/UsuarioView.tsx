@@ -775,7 +775,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
       const isOpeningMalo = openingEvalKey === `${row.idHistorial}_Malo`;
 
       return (
-        <div className="mt-2 p-2.5 rounded-xl bg-slate-900/60 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+        <div className="mt-2 p-2.5 rounded-xl bg-slate-900/60 border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 no-print">
           <div className="min-w-0">
             <span className="text-[11px] font-bold text-slate-200 block">
               ¿Cómo fue la calidad técnica de este servicio?
@@ -1161,7 +1161,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-6 text-slate-100 flex flex-col space-y-5 animate-fade-in">
+    <div className="w-full max-w-md mx-auto px-4 py-6 text-slate-100 flex flex-col space-y-5 animate-fade-in print:p-0 print:m-0 print:space-y-0 print:max-w-full print:block print:flex-none">
       
       {/* ---------------- VISTA A: LOGIN ---------------- */}
       {viewMode === "login" && (
@@ -1520,7 +1520,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
       {/* ---------------- VISTA D: DETALLE DE VEHÍCULO (CERTIFICADO Y REGISTROS DE FIRMAS SEPARADOS) ---------------- */}
       {viewMode === "certificado" && selectedCar && (
-        <div className="space-y-4 animate-fade-in">
+        <div className="space-y-4 animate-fade-in print:space-y-0 print:m-0 print:p-0 print:block">
           
           {/* Botón Volver y Header de Navegación */}
           <div className="flex items-center justify-between no-print">
@@ -1599,7 +1599,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           {/* SUB-VISTA 1: CERTIFICADO OFICIAL DE SALUD MECÁNICA */}
           {/* ============================================================== */}
           {activeVehicleTab === "certificado" && (
-            <div className="space-y-4">
+            <div className="space-y-4 print:space-y-0 print:m-0 print:p-0 print:block">
               {/* Selector de Tipo (Simple / Completo) */}
               <div className="flex justify-between items-center bg-slate-950/60 p-2 rounded-xl border border-white/10 no-print text-[11px]">
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider pl-1.5 font-bold">Tipo de Certificado:</span>
@@ -1639,7 +1639,11 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
               </div>
 
               {/* Contenedor Físico Imprimible del Certificado (HOJA 1) */}
-              <div className={`cert-printable-card cert-page-1 relative rounded-3xl p-5 border overflow-hidden ${
+              <div className={`cert-printable-card cert-page-1 ${
+                activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido"
+                  ? "cert-page-break-after"
+                  : "cert-simple-only"
+              } relative rounded-3xl p-5 border overflow-hidden print:overflow-visible print:p-4 print:rounded-xl print:m-0 ${
                 selectedCar.estadoCertificado !== "Vencido" && activeCertType === "completo"
                   ? "bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl shadow-amber-500/5"
                   : selectedCar.estadoCertificado === "Vencido"
@@ -1769,7 +1773,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
                   {/* ---------------- HOJA 2: ANEXO DE HISTORIAL Y REPARACIONES TÉCNICAS (VIP) ---------------- */}
                   {activeCertType === "completo" && selectedCar.estadoCertificado !== "Vencido" && (
-                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden print:overflow-visible bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4 print:mt-0 print:border-slate-800">
+                    <div className="cert-printable-card cert-page-2 relative rounded-3xl p-5 border overflow-hidden print:overflow-visible print:p-4 print:rounded-xl print:m-0 print:border-slate-800 bg-gradient-to-b from-[#0f0e0c] to-[#040404] border-amber-500/40 shadow-2xl mt-4 print:mt-0 print:h-auto print:max-h-none">
                       {/* Encabezado Oficial de Hoja 2 */}
                       <div className="border-b-2 border-slate-900 pb-2.5 mb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center text-left gap-2">
                         <div>
@@ -1796,7 +1800,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       {/* Resumen de Trazabilidad con QR de Verificación Pública */}
                       <div className="flex flex-col sm:flex-row items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-white/5 mb-3 text-[10px] font-mono gap-3 text-left">
                         <div className="flex items-center gap-3">
-                          <div className="bg-white p-1.5 rounded-lg shrink-0 shadow">
+                          <div className="bg-white p-1.5 rounded-lg shrink-0 shadow print:border print:border-slate-900">
                             <img
                               src={generateQRCodeUrl()}
                               alt="QR Validación Certificado"
@@ -1833,7 +1837,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
 
                       {/* Listado Cronológico de Mantenimientos y Reparaciones */}
-                      <div className="cert-history-list space-y-3.5 max-h-[500px] print:max-h-none overflow-y-auto print:overflow-visible pr-1">
+                      <div className="cert-history-list space-y-3.5 print:space-y-2.5 max-h-[500px] print:max-h-none print:h-auto overflow-y-auto print:overflow-visible pr-1 print:pr-0">
                         {historial.map((row, idx) => {
                           const tel = row.telefonoMecanico || "";
                           const formattedTel = formatWhatsAppNumber(tel);
