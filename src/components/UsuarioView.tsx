@@ -82,12 +82,20 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
   const [isPrinting, setIsPrinting] = useState(false);
   const [openingEvalKey, setOpeningEvalKey] = useState<string | null>(null);
 
-  // Manejador de impresión con retroalimentación visual inmediata en el botón
+  // Manejador de impresión con retroalimentación visual inmediata en el botón y nombre de archivo .pdf
   const handlePrintDocument = (tipo: "certificado" | "firmas") => {
     setIsPrinting(true);
+    const originalTitle = document.title;
+    const cleanPlaca = selectedCar?.placa ? selectedCar.placa.replace(/[^A-Za-z0-9]/g, "") : "AUTO";
+    const cleanDoc = tipo === "certificado" ? "Certificado_AutoScore" : "Registros_Firmas_AutoScore";
+    
+    // Asigna el nombre de archivo con extensión .pdf para que el navegador lo guarde en formato PDF
+    document.title = `${cleanDoc}_${cleanPlaca}.pdf`;
+
     setTimeout(() => {
       window.print();
       setTimeout(() => {
+        document.title = originalTitle;
         setIsPrinting(false);
       }, 1500);
     }, 250);
