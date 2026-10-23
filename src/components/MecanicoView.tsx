@@ -79,6 +79,8 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   const [inspAnio, setInspAnio] = useState("");
   const [inspIdDueno, setInspIdDueno] = useState("");
   const [inspKilometraje, setInspKilometraje] = useState("");
+  const [inspCombustible, setInspCombustible] = useState("Gasolina");
+  const [inspTransmision, setInspTransmision] = useState("Automática");
 
   // Estados para modo Re-Inspección Técnica (Vehículo existente que sube Score por mejoras)
   const [esReinspeccion, setEsReinspeccion] = useState(false);
@@ -93,12 +95,20 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   } | null>(null);
   const [buscandoVehiculoInsp, setBuscandoVehiculoInsp] = useState(false);
 
-  // Respuestas del cuestionario (Puntajes por defecto son ideales: 20 pts cada uno)
+  // Respuestas del cuestionario (Puntajes por defecto son ideales: 20 pts cada uno = 100 máx)
   const [qMotor, setQMotor] = useState<number>(20);
   const [qChasis, setQChasis] = useState<number>(20);
   const [qDireccion, setQDireccion] = useState<number>(20);
   const [qOBD, setQOBD] = useState<number>(20);
   const [qNeumaticos, setQNeumaticos] = useState<number>(20);
+
+  // Cuadros de Observaciones Técnicas detalladas por sección pericial
+  const [obsMotor, setObsMotor] = useState("");
+  const [obsChasis, setObsChasis] = useState("");
+  const [obsDireccion, setObsDireccion] = useState("");
+  const [obsOBD, setObsOBD] = useState("");
+  const [obsNeumaticos, setObsNeumaticos] = useState("");
+  const [obsDictamenGeneral, setObsDictamenGeneral] = useState("");
 
   const [inspError, setInspError] = useState<string | null>(null);
   const [inspSuccess, setInspSuccess] = useState<any | null>(null);
@@ -936,29 +946,89 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                 const scoreCalculado = qMotor + qChasis + qDireccion + qOBD + qNeumaticos;
 
-                const diagnosticoList = [
-                  `Motor/Transmisión: ${qMotor === 20 ? "Excelente (sin ruidos ni fugas)" : qMotor === 10 ? "Desgaste menor / Leve mantenimiento pendiente" : "Fallas activas / Fugas críticas"}`,
-                  `Estructura/Chasis: ${qChasis === 20 ? "Impecable (sin choques)" : qChasis === 12 ? "Detalles leves de pintura/carrocería" : "Daño estructural o choque grave"}`,
-                  `Dirección/Frenos: ${qDireccion === 20 ? "Óptimo y firme" : qDireccion === 10 ? "Desgaste medio" : "Inseguro / Falla crítica"}`,
-                  `Escáner OBD2: ${qOBD === 20 ? "Sistema limpio (sin códigos de falla)" : qOBD === 10 ? "Códigos guardados secundarios" : "Testigo Check Engine activo / Falla eléctrica"}`,
-                  `Neumáticos: ${qNeumaticos === 20 ? "Excelente estado (vida >70%)" : qNeumaticos === 10 ? "Desgaste medio (30%-70%)" : "Inseguro (neumáticos lisos)"}`
+                const descMotor = qMotor === 20 ? "Excelente (Sin ruidos anormales ni fugas)" : qMotor === 10 ? "Desgaste menor (Mantenimiento preventivo pendiente)" : "Crítico (Fugas activas o fallas mecánicas severas)";
+                const descChasis = qChasis === 20 ? "Estructura original intacta (Sin colisiones ni óxido)" : qChasis === 12 ? "Detalles cosméticos menores en carrocería/pintura" : "Daño estructural, corrosión grave o choque de consideración";
+                const descDireccion = qDireccion === 20 ? "Óptimo y alineado (Frenos y amortiguación firmes)" : qDireccion === 10 ? "Desgaste intermedio (Holgura menor o pastillas a media vida)" : "Inseguro (Requiere reemplazo de componentes de suspensión/frenos)";
+                const descOBD = qOBD === 20 ? "Escáner OBD-II Limpio (Sin DTCs en ECM/TCM/ABS/SRS)" : qOBD === 10 ? "Códigos históricos secundarios sin alerta de Check Engine" : "Testigo MIL/Check Engine activo o falla electrónica de seguridad";
+                const descNeumaticos = qNeumaticos === 20 ? "Excelente (>70% de vida útil y desgaste parejo)" : qNeumaticos === 10 ? "Vida media (30% a 70% de remanente)" : "Inseguro (Neumáticos lisos, deformados o vencidos)";
+
+                const lineasInforme: string[] = [
+                  `📋 TIPO DE REGISTRO: INSPECCIÓN TÉCNICA OFICIAL (NO ES REPARACIÓN)`,
+                  `Perito Acreditado: ${loggedMecanico.nombre} | Reg: ${loggedMecanico.codigoMecanico} | Taller: ${loggedMecanico.taller}`,
+                  `Vehículo: ${cleanMarca} ${cleanModelo} (${anioNum}) | Combustible: ${inspCombustible} | Transmisión: ${inspTransmision}`,
+                  `Odómetro Certificado: ${kmNum.toLocaleString("es-ES")} km`,
+                  `Calificación Pericial: ${scoreCalculado}/100 pts (${esReinspeccion ? `Re-evaluación técnica por mejoras; anterior: ${vehiculoExistenteInfo?.scoreActual ?? "?"} pts` : "Inspección técnica de ingreso oficial"})`,
+                  `----------------------------------------`,
+                  `1. MOTOR Y PLANTA MOTRIZ (${qMotor}/20 pts):`,
+                  `   • Estado: ${descMotor}`,
+                  `   • Observación: ${obsMotor.trim() ? obsMotor.trim() : "Sin novedades reportadas."}`,
+                  `2. ESTRUCTURA, BASTIDOR Y CARROCERÍA (${qChasis}/20 pts):`,
+                  `   • Estado: ${descChasis}`,
+                  `   • Observación: ${obsChasis.trim() ? obsChasis.trim() : "Sin novedades reportadas."}`,
+                  `3. DIRECCIÓN, SUSPENSIÓN Y FRENOS (${qDireccion}/20 pts):`,
+                  `   • Estado: ${descDireccion}`,
+                  `   • Observación: ${obsDireccion.trim() ? obsDireccion.trim() : "Sin novedades reportadas."}`,
+                  `4. DIAGNÓSTICO ELECTRÓNICO OBD-II Y SENSORES (${qOBD}/20 pts):`,
+                  `   • Estado: ${descOBD}`,
+                  `   • Observación: ${obsOBD.trim() ? obsOBD.trim() : "Sin novedades reportadas."}`,
+                  `5. NEUMÁTICOS, FLUIDOS Y EQUIPO DE SEGURIDAD (${qNeumaticos}/20 pts):`,
+                  `   • Estado: ${descNeumaticos}`,
+                  `   • Observación: ${obsNeumaticos.trim() ? obsNeumaticos.trim() : "Sin novedades reportadas."}`,
+                  `----------------------------------------`,
+                  `DICTAMEN Y RECOMENDACIONES PERICIALES:`,
+                  obsDictamenGeneral.trim() ? obsDictamenGeneral.trim() : "Vehículo evaluado bajo estándar de inspección técnica oficial AutoScore."
                 ];
+
+                const trabajoInspeccion = lineasInforme.join("\n");
 
                 try {
                   if (!appScriptUrl) {
                     throw new Error("Debe configurar la URL de la Base de Datos en el botón de arriba ⚙️.");
                   }
 
-                  // ---------------- CASO 1: RE-INSPECCIÓN TÉCNICA (Vehículo Existente) ----------------
-                  if (esReinspeccion) {
-                    const trabajoReinspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nRE-INSPECCIÓN TÉCNICA POR MEJORAS EN AUTOSCORE.\nNuevo Score Asignado: ${scoreCalculado} pts (Anterior: ${vehiculoExistenteInfo?.scoreActual ?? "?"} pts).\nEvaluación de Sistemas Reparados por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
+                  let success = false;
+                  let lastIdHist = "10006";
 
-                    let successReinsp = false;
-                    let lastIdHist = "10006";
+                  // Intento Principal: Acción especializada registrarInspeccionTecnica
+                  try {
+                    const responseInsp = await fetch(appScriptUrl, {
+                      method: "POST",
+                      mode: "cors",
+                      headers: { "Content-Type": "text/plain;charset=utf-8" },
+                      body: JSON.stringify({
+                        accion: "registrarInspeccionTecnica",
+                        codigoMecanico: loggedMecanico.codigoMecanico,
+                        placa: cleanPlaca,
+                        marca: cleanMarca,
+                        modelo: cleanModelo,
+                        anio: anioNum,
+                        idDueno: cleanIdDueno,
+                        kilometraje: kmNum,
+                        score: scoreCalculado,
+                        trabajo: trabajoInspeccion,
+                        tipoRegistro: "Inspección Técnica",
+                        combustible: inspCombustible,
+                        transmision: inspTransmision,
+                        esReinspeccion: esReinspeccion,
+                        estadoCertificado: "Activo"
+                      })
+                    });
 
-                    // Intento A: Invocar la acción directa 'reinspeccionarVehiculo'
-                    try {
-                      const responseReinsp = await fetch(appScriptUrl, {
+                    if (responseInsp.ok) {
+                      const resJson = await responseInsp.json();
+                      if (resJson && resJson.success) {
+                        success = true;
+                        lastIdHist = resJson.data?.idHistorial || "10006";
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("Fallo registrarInspeccionTecnica directo, intentando fallback:", e);
+                  }
+
+                  // Fallback de compatibilidad si el script remoto es versión previa
+                  if (!success) {
+                    if (esReinspeccion) {
+                      const resReinsp = await fetch(appScriptUrl, {
                         method: "POST",
                         mode: "cors",
                         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -968,119 +1038,60 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                           score: scoreCalculado,
                           codigoMecanico: loggedMecanico.codigoMecanico,
                           kilometraje: kmNum,
-                          trabajo: trabajoReinspeccion,
+                          trabajo: trabajoInspeccion,
+                          tipoRegistro: "Inspección Técnica",
                           estadoCertificado: "Activo"
                         })
                       });
-
-                      if (responseReinsp.ok) {
-                        const resJson = await responseReinsp.json();
-                        if (resJson && resJson.success) {
-                          successReinsp = true;
-                          lastIdHist = resJson.data?.idHistorial || "10006";
+                      if (resReinsp.ok) {
+                        const rJson = await resReinsp.json();
+                        if (rJson && rJson.success) {
+                          success = true;
+                          lastIdHist = rJson.data?.idHistorial || "10006";
                         }
                       }
-                    } catch (err) {
-                      console.warn("Fallo en reinspeccionarVehiculo:", err);
-                    }
-
-                    // Intento B (Fallback de compatibilidad con versión anterior del script)
-                    if (!successReinsp) {
-                      // Registrar como mantenimiento para asentar la firma en el historial
-                      const resMaintFallback = await fetch(appScriptUrl, {
+                    } else {
+                      // Registrar vehiculo + registro
+                      const resReg = await fetch(appScriptUrl, {
                         method: "POST",
                         mode: "cors",
                         headers: { "Content-Type": "text/plain;charset=utf-8" },
                         body: JSON.stringify({
-                          codigoMecanico: loggedMecanico.codigoMecanico,
+                          accion: "registrarVehiculo",
                           placa: cleanPlaca,
-                          kilometraje: kmNum,
-                          trabajo: trabajoReinspeccion
+                          marca: cleanMarca,
+                          modelo: cleanModelo,
+                          anio: anioNum,
+                          idDueno: cleanIdDueno,
+                          score: scoreCalculado,
+                          estadoCertificado: "Activo"
                         })
                       });
-                      if (resMaintFallback.ok) {
-                        const mJson = await resMaintFallback.json();
-                        if (mJson && mJson.success) {
-                          lastIdHist = mJson.data?.idHistorial || "10006";
+                      if (resReg.ok) {
+                        const rReg = await resReg.json();
+                        if (!rReg.success) throw new Error(rReg.error || "Error al registrar vehículo.");
+                        const resMaint = await fetch(appScriptUrl, {
+                          method: "POST",
+                          mode: "cors",
+                          headers: { "Content-Type": "text/plain;charset=utf-8" },
+                          body: JSON.stringify({
+                            codigoMecanico: loggedMecanico.codigoMecanico,
+                            placa: cleanPlaca,
+                            kilometraje: kmNum,
+                            trabajo: trabajoInspeccion,
+                            tipoRegistro: "Inspección Técnica"
+                          })
+                        });
+                        if (resMaint.ok) {
+                          const rMaint = await resMaint.json();
+                          if (rMaint && rMaint.success) {
+                            success = true;
+                            lastIdHist = rMaint.data?.idHistorial || "10005";
+                          }
                         }
                       }
                     }
-
-                    setInspSuccess({
-                      placa: cleanPlaca,
-                      marca: cleanMarca,
-                      modelo: cleanModelo,
-                      score: scoreCalculado,
-                      dueno: cleanIdDueno,
-                      idHistorial: lastIdHist,
-                      esReinspeccion: true,
-                      scoreAnterior: vehiculoExistenteInfo?.scoreActual
-                    });
-
-                    notifyDataChanged();
-
-                    setInspPlaca("");
-                    setInspMarca("");
-                    setInspModelo("");
-                    setInspAnio("");
-                    setInspIdDueno("");
-                    setInspKilometraje("");
-                    setEsReinspeccion(false);
-                    setVehiculoExistenteInfo(null);
-                    setQMotor(20);
-                    setQChasis(20);
-                    setQDireccion(20);
-                    setQOBD(20);
-                    setQNeumaticos(20);
-                    setIsSubmittingInsp(false);
-                    return;
                   }
-
-                  // ---------------- CASO 2: INSPECCIÓN INICIAL (Vehículo Nuevo) ----------------
-                  const trabajoInspeccion = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nINSPECCIÓN TÉCNICA DE INGRESO AUTOSCORE.\nDiagnóstico Inicial por ${loggedMecanico.nombre}:\n• ${diagnosticoList.join("\n• ")}`;
-
-                  const responseReg = await fetch(appScriptUrl, {
-                    method: "POST",
-                    mode: "cors",
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({
-                      accion: "registrarVehiculo",
-                      placa: cleanPlaca,
-                      marca: cleanMarca,
-                      modelo: cleanModelo,
-                      anio: anioNum,
-                      idDueno: cleanIdDueno,
-                      score: scoreCalculado,
-                      estadoCertificado: "Activo"
-                    })
-                  });
-
-                  if (!responseReg.ok) {
-                    throw new Error(`Fallo en conexión al registrar vehículo: ${responseReg.statusText}`);
-                  }
-
-                  const resultReg = await responseReg.json();
-                  if (!resultReg || !resultReg.success) {
-                    throw new Error(resultReg?.error || "Error al registrar vehículo en la Base de Datos.");
-                  }
-
-                  const responseMaint = await fetch(appScriptUrl, {
-                    method: "POST",
-                    mode: "cors",
-                    headers: { "Content-Type": "text/plain;charset=utf-8" },
-                    body: JSON.stringify({
-                      codigoMecanico: loggedMecanico.codigoMecanico,
-                      placa: cleanPlaca,
-                      kilometraje: kmNum,
-                      trabajo: trabajoInspeccion
-                    })
-                  });
-
-                  if (!responseMaint.ok) {
-                    throw new Error(`Fallo al registrar diagnóstico de ingreso: ${responseMaint.statusText}`);
-                  }
-
-                  const resultMaint = await responseMaint.json();
 
                   setInspSuccess({
                     placa: cleanPlaca,
@@ -1088,23 +1099,34 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                     modelo: cleanModelo,
                     score: scoreCalculado,
                     dueno: cleanIdDueno,
-                    idHistorial: resultMaint.success ? (resultMaint.data?.idHistorial || "10005") : "10005",
-                    esReinspeccion: false
+                    idHistorial: lastIdHist,
+                    esReinspeccion: esReinspeccion,
+                    tipoRegistro: "Inspección Técnica",
+                    scoreAnterior: vehiculoExistenteInfo?.scoreActual
                   });
 
                   notifyDataChanged();
 
+                  // Limpiar formulario completo
                   setInspPlaca("");
                   setInspMarca("");
                   setInspModelo("");
                   setInspAnio("");
                   setInspIdDueno("");
                   setInspKilometraje("");
+                  setEsReinspeccion(false);
+                  setVehiculoExistenteInfo(null);
                   setQMotor(20);
                   setQChasis(20);
                   setQDireccion(20);
                   setQOBD(20);
                   setQNeumaticos(20);
+                  setObsMotor("");
+                  setObsChasis("");
+                  setObsDireccion("");
+                  setObsOBD("");
+                  setObsNeumaticos("");
+                  setObsDictamenGeneral("");
                   setIsSubmittingInsp(false);
                 } catch (err: any) {
                   setInspError(err.message || "Fallo en la conexión del servidor al registrar la inspección.");
@@ -1257,97 +1279,246 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                       />
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
+                        Tipo de Combustible:
+                      </label>
+                      <select
+                        value={inspCombustible}
+                        onChange={(e) => setInspCombustible(e.target.value)}
+                        className="w-full glass-input rounded-xl px-2.5 py-1.5 text-xs bg-slate-900 border border-white/10 focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="Gasolina">Gasolina</option>
+                        <option value="Diésel">Diésel</option>
+                        <option value="Híbrido">Híbrido (HEV/PHEV)</option>
+                        <option value="Eléctrico (EV)">100% Eléctrico (EV)</option>
+                        <option value="Gas (GLP/GNC)">Gas (GLP / GNC)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-400 uppercase mb-1">
+                        Caja de Transmisión:
+                      </label>
+                      <select
+                        value={inspTransmision}
+                        onChange={(e) => setInspTransmision(e.target.value)}
+                        className="w-full glass-input rounded-xl px-2.5 py-1.5 text-xs bg-slate-900 border border-white/10 focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="Automática">Automática (AT / CVT / DSG)</option>
+                        <option value="Manual">Manual / Mecánica (MT)</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Bloque 2: Cuestionario de Evaluación Técnica */}
+                {/* Bloque 2: Cuestionario de Evaluación Técnica Pericial */}
                 <div className="bg-white/[0.03] border border-white/5 rounded-2xl p-3.5 space-y-4">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-1.5">
-                    <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest">
-                      2. Cuestionario de Diagnóstico y Estado
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      5 áreas clave (20 pts c/u)
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                    <div>
+                      <span className="text-[10px] font-mono font-bold text-amber-500 uppercase tracking-widest block">
+                        2. Protocolo Pericial de Inspección Técnica
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">
+                        Califique cada subsistema y registre las observaciones mecánicas correspondientes.
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      5 Subsistemas
                     </span>
                   </div>
 
-                  {/* Pregunta 1 */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      a) Estado del Motor y Transmisión:
-                    </label>
+                  {/* Subsistema 1: Motor y Transmisión */}
+                  <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-200">
+                        a) Motor y Planta Motriz (20 pts máx):
+                      </label>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        qMotor === 20 ? "text-emerald-400 bg-emerald-500/10" : qMotor === 10 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10"
+                      }`}>
+                        {qMotor}/20 pts
+                      </span>
+                    </div>
                     <select
                       value={qMotor}
                       onChange={(e) => setQMotor(Number(e.target.value))}
                       className="w-full glass-input rounded-xl px-3 py-1.5 text-xs bg-slate-900 border border-white/10"
                     >
-                      <option value={20}>Excelente - Sin fugas ni ruidos extraños (+20 pts)</option>
-                      <option value={10}>Desgaste menor - Requiere mantenimiento preventivo simple (+10 pts)</option>
-                      <option value={0}>Crítico - Fugas severas de aceite/agua o ruidos metálicos (+0 pts)</option>
+                      <option value={20}>Excelente - Sin fugas de fluidos, compresión y ralentí parejos (+20 pts)</option>
+                      <option value={10}>Desgaste menor - Sudoración leve de aceite o mantenimiento preventivo sugerido (+10 pts)</option>
+                      <option value={0}>Crítico - Fugas severas, sobrecalentamiento o ruidos metálicos internos (+0 pts)</option>
                     </select>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        📝 Cuadro de Observaciones Técnicas (Motor):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={obsMotor}
+                        onChange={(e) => setObsMotor(e.target.value)}
+                        placeholder="Ej: Sin fugas en empaque de tapa válvulas; aceite en nivel y viscosidad adecuada; correas en buen estado..."
+                        className="w-full glass-input rounded-xl px-3 py-1.5 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      />
+                    </div>
                   </div>
 
-                  {/* Pregunta 2 */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      b) Estado de Chasis, Estructura y Pintura:
-                    </label>
+                  {/* Subsistema 2: Chasis y Carrocería */}
+                  <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-200">
+                        b) Estructura, Chasis y Carrocería (20 pts máx):
+                      </label>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        qChasis === 20 ? "text-emerald-400 bg-emerald-500/10" : qChasis === 12 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10"
+                      }`}>
+                        {qChasis}/20 pts
+                      </span>
+                    </div>
                     <select
                       value={qChasis}
                       onChange={(e) => setQChasis(Number(e.target.value))}
                       className="w-full glass-input rounded-xl px-3 py-1.5 text-xs bg-slate-900 border border-white/10"
                     >
-                      <option value={20}>Impecable - Sin colisiones previas ni detalles estructurales (+20 pts)</option>
-                      <option value={12}>Leves detalles - Rayones cosméticos o detalles menores de pintura (+12 pts)</option>
-                      <option value={0}>Grave - Daño de compacto, corrosión severa o choque de consideración (+0 pts)</option>
+                      <option value={20}>Impecable - Estructura original sin colisiones ni óxido estructural (+20 pts)</option>
+                      <option value={12}>Leves detalles - Rayones cosméticos de uso o repintado de piezas exteriores (+12 pts)</option>
+                      <option value={0}>Grave - Daño en largueros/punteras, corrosión severa o descuadre de puertas (+0 pts)</option>
                     </select>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        📝 Cuadro de Observaciones Técnicas (Estructura/Chasis):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={obsChasis}
+                        onChange={(e) => setObsChasis(e.target.value)}
+                        placeholder="Ej: Compactos rectos sin soldaduras de bancada; pintura uniforme en paneles; pequeños toques en parachoques..."
+                        className="w-full glass-input rounded-xl px-3 py-1.5 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      />
+                    </div>
                   </div>
 
-                  {/* Pregunta 3 */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      c) Dirección, Tren Delantero y Frenos:
-                    </label>
+                  {/* Subsistema 3: Dirección, Tren Delantero y Frenos */}
+                  <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-200">
+                        c) Dirección, Suspensión y Sistema de Frenos (20 pts máx):
+                      </label>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        qDireccion === 20 ? "text-emerald-400 bg-emerald-500/10" : qDireccion === 10 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10"
+                      }`}>
+                        {qDireccion}/20 pts
+                      </span>
+                    </div>
                     <select
                       value={qDireccion}
                       onChange={(e) => setQDireccion(Number(e.target.value))}
                       className="w-full glass-input rounded-xl px-3 py-1.5 text-xs bg-slate-900 border border-white/10"
                     >
-                      <option value={20}>Óptimo y Firme - Frenado de precisión y amortiguadores estables (+20 pts)</option>
-                      <option value={10}>Desgaste medio - Holgura menor de muñones o pastillas de freno a media vida (+10 pts)</option>
-                      <option value={0}>Inseguro - Requiere sustitución inmediata de amortiguadores o pastillas (+0 pts)</option>
+                      <option value={20}>Óptimo y Firme - Amortiguadores secos y frenado balanceado (+20 pts)</option>
+                      <option value={10}>Desgaste medio - Holgura menor en terminales o pastillas al 40% (+10 pts)</option>
+                      <option value={0}>Inseguro - Fugas en bomba/cálipers, discos alabeados o rótulas con juego crítico (+0 pts)</option>
                     </select>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        📝 Cuadro de Observaciones Técnicas (Suspensión y Frenos):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={obsDireccion}
+                        onChange={(e) => setObsDireccion(e.target.value)}
+                        placeholder="Ej: Espesor de discos y pastillas medidos en tolerancia; bujes y rótulas sin juego peligroso..."
+                        className="w-full glass-input rounded-xl px-3 py-1.5 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      />
+                    </div>
                   </div>
 
-                  {/* Pregunta 4 */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      d) Escáner OBD-II y Sistemas Electrónicos:
-                    </label>
+                  {/* Subsistema 4: Escáner OBD-II y Sensores */}
+                  <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-200">
+                        d) Escáner OBD-II y Red de A bordo (20 pts máx):
+                      </label>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        qOBD === 20 ? "text-emerald-400 bg-emerald-500/10" : qOBD === 10 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10"
+                      }`}>
+                        {qOBD}/20 pts
+                      </span>
+                    </div>
                     <select
                       value={qOBD}
                       onChange={(e) => setQOBD(Number(e.target.value))}
                       className="w-full glass-input rounded-xl px-3 py-1.5 text-xs bg-slate-900 border border-white/10"
                     >
-                      <option value={20}>Limpio - Ninguna luz de advertencia ni códigos de error OBD-II (+20 pts)</option>
-                      <option value={10}>Secundario - Códigos de error inactivos o sensores auxiliares leves (+10 pts)</option>
-                      <option value={0}>Falla Crítica - Luz de motor Check Engine encendida o fallas de seguridad (+0 pts)</option>
+                      <option value={20}>Limpio - 0 DTCs en módulos ECM/TCM/ABS/SRS y monitores completos (+20 pts)</option>
+                      <option value={10}>Secundario - Códigos históricos no críticos o sensor de parking/luz secundario (+10 pts)</option>
+                      <option value={0}>Falla Crítica - Testigo MIL Check Engine, fallas de airbag o ABS encendidas (+0 pts)</option>
                     </select>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        📝 Cuadro de Observaciones Técnicas (OBD-II y Electrónica):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={obsOBD}
+                        onChange={(e) => setObsOBD(e.target.value)}
+                        placeholder="Ej: Escaneado con equipo pericial; lecturas de voltaje del alternador a 14.2V; sin fallas de encendido..."
+                        className="w-full glass-input rounded-xl px-3 py-1.5 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      />
+                    </div>
                   </div>
 
-                  {/* Pregunta 5 */}
-                  <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      e) Neumáticos y Llanta de Repuesto:
-                    </label>
+                  {/* Subsistema 5: Neumáticos y Fluidos */}
+                  <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-200">
+                        e) Neumáticos, Llantas y Fluidos Auxiliares (20 pts máx):
+                      </label>
+                      <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                        qNeumaticos === 20 ? "text-emerald-400 bg-emerald-500/10" : qNeumaticos === 10 ? "text-amber-400 bg-amber-500/10" : "text-rose-400 bg-rose-500/10"
+                      }`}>
+                        {qNeumaticos}/20 pts
+                      </span>
+                    </div>
                     <select
                       value={qNeumaticos}
                       onChange={(e) => setQNeumaticos(Number(e.target.value))}
                       className="w-full glass-input rounded-xl px-3 py-1.5 text-xs bg-slate-900 border border-white/10"
                     >
-                      <option value={20}>Excelente estado - Vida útil superior al 70% (+20 pts)</option>
-                      <option value={10}>Estado intermedio - Neumáticos con vida entre el 30% y 70% (+10 pts)</option>
-                      <option value={0}>Desgaste severo - Neumáticos lisos, agrietados o vencidos (+0 pts)</option>
+                      <option value={20}>Excelente - Vida útil superior al 70%, desgaste simétrico y repuesto operativo (+20 pts)</option>
+                      <option value={10}>Intermedio - Vida útil entre 30% y 70%, banda de rodadura aceptable (+10 pts)</option>
+                      <option value={0}>Inseguro - Llantas lisas (menos de 2mm), cristalizadas, rajadas o vencidas (+0 pts)</option>
                     </select>
+                    <div>
+                      <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-1">
+                        📝 Cuadro de Observaciones Técnicas (Neumáticos y Fluidos):
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={obsNeumaticos}
+                        onChange={(e) => setObsNeumaticos(e.target.value)}
+                        placeholder="Ej: Profundidad promedio de banda 5.5mm; DOT vigente; líquido refrigerante en punto óptimo..."
+                        className="w-full glass-input rounded-xl px-3 py-1.5 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Dictamen Pericial General */}
+                  <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                    <label className="block text-xs font-bold text-amber-300">
+                      📋 Dictamen Pericial General y Recomendaciones del Taller:
+                    </label>
+                    <p className="text-[10px] text-slate-400">
+                      Conclusión técnica que figurará formalmente en el Certificado y Hoja de Vida del vehículo:
+                    </p>
+                    <textarea
+                      rows={3}
+                      value={obsDictamenGeneral}
+                      onChange={(e) => setObsDictamenGeneral(e.target.value)}
+                      placeholder="Ej: Vehículo en condiciones mecánicas y estructurales aptas para circular con confiabilidad. Se recomienda próximo cambio de aceite a los 50.000 km..."
+                      className="w-full glass-input rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:border-amber-500 placeholder:text-slate-600 bg-slate-900/80"
+                    />
                   </div>
                 </div>
 
@@ -1359,15 +1530,15 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                 }`}>
                   <div className="min-w-0">
                     <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest block">
-                      {esReinspeccion ? "Nuevo AutoScore Certificado (Mejoras)" : "AutoScore Inicial Resultante"}
+                      {esReinspeccion ? "AutoScore Pericial Oficial (Re-Inspección)" : "AutoScore Pericial Resultante"}
                     </span>
                     <p className="text-[11px] text-slate-400 mt-0.5 leading-normal">
                       {esReinspeccion && vehiculoExistenteInfo ? (
                         <span>
-                          Puntaje anterior: <strong className="line-through text-slate-400">{vehiculoExistenteInfo.scoreActual} pts</strong> ➔ Nuevo puntaje oficial tras auditoría de mejoras.
+                          Puntaje anterior: <strong className="line-through text-slate-400">{vehiculoExistenteInfo.scoreActual} pts</strong> ➔ Nuevo puntaje oficial tras auditoría pericial de mejoras.
                         </span>
                       ) : (
-                        <span>Puntaje de confianza inicial basado estrictamente en el cuestionario técnico de {loggedMecanico.nombre}.</span>
+                        <span>Puntaje de confianza pericial respaldado por el taller homologado de {loggedMecanico.nombre}.</span>
                       )}
                     </p>
                   </div>
@@ -1398,12 +1569,12 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                   ) : esReinspeccion ? (
                     <>
                       <Sparkles className="w-4 h-4 text-slate-950" />
-                      <span>Emitir Re-Inspección y Actualizar Score a {qMotor + qChasis + qDireccion + qOBD + qNeumaticos} pts</span>
+                      <span>Certificar Re-Inspección Técnica Oficial (Nuevo Score: {qMotor + qChasis + qDireccion + qOBD + qNeumaticos} pts)</span>
                     </>
                   ) : (
                     <>
                       <ClipboardCheck className="w-4 h-4" />
-                      <span>Emitir Homologación y Sello de Ingreso</span>
+                      <span>Certificar e Inscribir Inspección Técnica Oficial</span>
                     </>
                   )}
                 </button>

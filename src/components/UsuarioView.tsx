@@ -3,7 +3,8 @@ import {
   User, Car, Shield, QrCode, ClipboardList, Lock, Sparkles, ChevronLeft, 
   Search, Calendar, Gauge, Award, Wrench, RefreshCw, AlertCircle, HelpCircle, 
   CheckCircle, Download, Copy, Check, Phone, ExternalLink, ArrowRight, UserPlus,
-  PenTool, Share2, FileText, AlertTriangle, ThumbsUp, ThumbsDown, Star, MessageSquare
+  PenTool, Share2, FileText, AlertTriangle, ThumbsUp, ThumbsDown, Star, MessageSquare,
+  ClipboardCheck
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { notifyDataChanged } from "../mockData";
@@ -1845,13 +1846,30 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                           const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
                           const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
                           const fechaReparacion = formatFechaRegistro(row.fecha);
+                          const esInspeccion = row.tipoRegistro === "Inspección Técnica" || 
+                            (row.trabajoRealizado && (
+                              row.trabajoRealizado.includes("INSPECCIÓN TÉCNICA") || 
+                              row.trabajoRealizado.includes("RE-INSPECCIÓN TÉCNICA") ||
+                              row.trabajoRealizado.includes("TIPO DE REGISTRO: INSPECCIÓN TÉCNICA")
+                            ));
 
                           return (
-                            <div key={idx} className="cert-timeline-item border-l-4 border-amber-500 pl-4 py-3 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md print:bg-white print:border-slate-300 print:shadow-none">
-                              {/* Fecha de la Reparación y Kilometraje destacados */}
+                            <div key={idx} className={`cert-timeline-item border-l-4 ${esInspeccion ? "border-blue-500" : "border-amber-500"} pl-4 py-3 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md print:bg-white print:border-slate-300 print:shadow-none`}>
+                              {/* Encabezado de Tipo de Registro, Fecha y Kilometraje */}
                               <div className="flex items-center justify-between text-[11px] font-mono text-slate-200 bg-slate-900/80 border border-white/10 px-3 py-1.5 rounded-lg flex-wrap gap-2">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-amber-400 font-bold">📅 Fecha de Reparación:</span>
+                                  {esInspeccion ? (
+                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                      📋 Inspección Técnica Oficial
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded text-[9.5px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      🔧 Reparación Mecánica
+                                    </span>
+                                  )}
+                                  <span className={esInspeccion ? "text-blue-400 font-bold" : "text-amber-400 font-bold"}>
+                                    {esInspeccion ? "Fecha Inspección:" : "Fecha Reparación:"}
+                                  </span>
                                   <strong className="text-white bg-slate-800 px-2.5 py-0.5 rounded border border-white/10 font-black">
                                     {fechaReparacion}
                                   </strong>
@@ -1862,10 +1880,10 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                 </div>
                               </div>
                               
-                              {/* Trabajo o Reparación Realizada */}
-                              <div className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-3 rounded-lg border border-white/10">
-                                <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                                  Trabajo / Reparación Realizada:
+                              {/* Trabajo o Diagnóstico Pericial Realizado */}
+                              <div className={`cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-3 rounded-lg border ${esInspeccion ? "border-blue-500/20" : "border-white/10"}`}>
+                                <span className={`text-[9.5px] font-bold uppercase tracking-wider block mb-1 ${esInspeccion ? "text-blue-300" : "text-slate-400"}`}>
+                                  {esInspeccion ? "📋 Informe Pericial de la Inspección Técnica:" : "🔧 Trabajo / Reparación Realizada:"}
                                 </span>
                                 <p className="text-slate-100 font-sans font-medium whitespace-pre-line text-[11.5px]">
                                   {row.trabajoRealizado}
@@ -2194,22 +2212,45 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                           const nombreMec = row.nombreMecanico && !row.nombreMecanico.startsWith("Técnico de") ? row.nombreMecanico : (row.trabajoRealizado && row.trabajoRealizado.includes("Realizado por:") ? (row.trabajoRealizado.match(/Realizado por:\s*([^\(]+)/i)?.[1]?.trim()) : null) || (tallerReal ? `Técnico de ${tallerReal}` : "Mecánico Certificado");
                           const maskedCode = row.codigoMecanico ? String(row.codigoMecanico).replace(/./g, (c, i) => i === 0 ? c : "*") : "";
 
+                          const esInspeccion = row.tipoRegistro === "Inspección Técnica" || 
+                            (row.trabajoRealizado && (
+                              row.trabajoRealizado.includes("INSPECCIÓN TÉCNICA") || 
+                              row.trabajoRealizado.includes("RE-INSPECCIÓN TÉCNICA") ||
+                              row.trabajoRealizado.includes("TIPO DE REGISTRO: INSPECCIÓN TÉCNICA")
+                            ));
+
                           return (
-                            <div key={idx} className="cert-timeline-item border-l-3 border-emerald-500 pl-4 py-2.5 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md">
-                              {/* Fecha y Kilometraje */}
-                              <div className="flex items-center justify-between text-[10px] font-mono text-slate-300">
-                                <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
-                                  📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
-                                </span>
+                            <div key={idx} className={`cert-timeline-item border-l-3 ${esInspeccion ? "border-blue-500" : "border-emerald-500"} pl-4 py-2.5 relative space-y-2.5 bg-slate-950/40 rounded-r-xl pr-3 border border-white/5 shadow-md`}>
+                              {/* Tipo de registro, Fecha y Kilometraje */}
+                              <div className="flex items-center justify-between text-[10px] font-mono text-slate-300 flex-wrap gap-2">
+                                <div className="flex items-center gap-1.5">
+                                  {esInspeccion ? (
+                                    <span className="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider">
+                                      📋 Inspección Técnica
+                                    </span>
+                                  ) : (
+                                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded font-black text-[9px] uppercase tracking-wider">
+                                      🔧 Reparación
+                                    </span>
+                                  )}
+                                  <span className="bg-slate-900 border border-white/10 px-2.5 py-0.5 rounded text-white font-bold">
+                                    📅 {row.fecha ? row.fecha.split(" ")[0] : "Fecha no registrada"}
+                                  </span>
+                                </div>
                                 <span className="text-amber-400 font-extrabold bg-amber-500/10 px-2.5 py-0.5 rounded border border-amber-500/20">
                                   ⚡ {row.kilometraje != null ? Number(row.kilometraje).toLocaleString() : "0"} km
                                 </span>
                               </div>
                               
-                              {/* Trabajo Realizado */}
-                              <p className="cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border border-white/10">
-                                {row.trabajoRealizado}
-                              </p>
+                              {/* Trabajo o Informe Pericial */}
+                              <div className={`cert-work-desc text-xs text-slate-100 leading-relaxed font-normal bg-black/40 p-2.5 rounded-lg border ${esInspeccion ? "border-blue-500/20" : "border-white/10"}`}>
+                                <span className={`text-[9px] font-bold uppercase tracking-wider block mb-1 ${esInspeccion ? "text-blue-300" : "text-slate-400"}`}>
+                                  {esInspeccion ? "📋 Informe Pericial de Inspección Técnica:" : "🔧 Trabajo o Reparación Realizada:"}
+                                </span>
+                                <p className="whitespace-pre-line text-[11px]">
+                                  {row.trabajoRealizado}
+                                </p>
+                              </div>
                               
                               {/* Tarjeta del Taller y Mecánico Firmante */}
                               <div className="cert-workshop-box bg-[#0b0c10] border border-emerald-500/20 rounded-xl p-3 flex flex-col xs:flex-row items-stretch xs:items-center justify-between gap-3 shadow-md">
@@ -2422,8 +2463,11 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         const fechaTexto = selectedMantenimiento.fecha ? selectedMantenimiento.fecha.split(" ")[0] : "";
         const kmTexto = selectedMantenimiento.kilometraje != null ? Number(selectedMantenimiento.kilometraje).toLocaleString() : "0";
         const mecanicoNombre = selectedMantenimiento.mecanicoNombre || selectedMantenimiento.nombreMecanico || "Mecánico Certificado";
+        const esInspeccionModal = (selectedMantenimiento as any).tipoRegistro === "Inspección Técnica" || 
+          trabajoTexto.includes("INSPECCIÓN TÉCNICA") || 
+          trabajoTexto.includes("TIPO DE REGISTRO: INSPECCIÓN TÉCNICA");
 
-        const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore un mantenimiento firmado por el taller "${selectedMantenimiento.taller || "Taller"}" con sello digital #${maskedCode} el día ${fechaTexto} con ${kmTexto} km ("${trabajoTexto}"). ¿Podrían corroborar la validez de este trabajo? Muchas gracias.`;
+        const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore ${esInspeccionModal ? "una Inspección Técnica Oficial" : "un mantenimiento/reparación"} firmado por el taller "${selectedMantenimiento.taller || "Taller"}" con sello digital #${maskedCode} el día ${fechaTexto} con ${kmTexto} km ("${trabajoTexto}"). ¿Podrían corroborar la validez de este registro técnico? Muchas gracias.`;
 
         return (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in no-print">
@@ -2437,33 +2481,33 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
               </button>
 
               <div className="text-center border-b border-white/5 pb-3.5">
-                <div className="inline-flex p-3 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
-                  <Wrench className="w-6 h-6" />
+                <div className={`inline-flex p-3 rounded-full ${esInspeccionModal ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"} mb-2`}>
+                  {esInspeccionModal ? <ClipboardCheck className="w-6 h-6" /> : <Wrench className="w-6 h-6" />}
                 </div>
-                <div className="text-[9px] font-mono font-extrabold text-amber-500 uppercase tracking-widest mb-0.5">
-                  Tarjeta de Taller Certificado
+                <div className={`text-[9px] font-mono font-extrabold ${esInspeccionModal ? "text-blue-400" : "text-amber-500"} uppercase tracking-widest mb-0.5`}>
+                  {esInspeccionModal ? "Certificación de Inspección Técnica" : "Tarjeta de Taller Certificado"}
                 </div>
                 <h4 className="text-base font-display font-black text-amber-400">
                   {selectedMantenimiento.taller || "Taller Autorizado AutoScore"}
                 </h4>
                 <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full text-xs text-emerald-400 font-bold mt-2">
                   <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                  <span>Mecánico Certificador: <strong className="text-white font-black">{mecanicoNombre}</strong></span>
+                  <span>{esInspeccionModal ? "Perito Certificador:" : "Mecánico Certificador:"} <strong className="text-white font-black">{mecanicoNombre}</strong></span>
                 </div>
                 <p className="text-[10px] text-slate-400 font-mono mt-2">Sello Digital: #M****</p>
               </div>
 
               <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Taller / Establecimiento:</span>
+                  <span className="text-slate-400">Taller / Peritaje:</span>
                   <strong className="text-amber-400 font-extrabold">{selectedMantenimiento.taller || "Taller Autorizado"}</strong>
                 </div>
                 <div className="flex justify-between items-center pt-1.5 border-t border-white/5">
-                  <span className="text-slate-400">Mecánico Responsable:</span>
+                  <span className="text-slate-400">Responsable:</span>
                   <strong className="text-white font-bold">{mecanicoNombre}</strong>
                 </div>
                 <div className="pt-2 border-t border-white/5 mt-2">
-                  <span>Reparación Certificada:</span>
+                  <span>{esInspeccionModal ? "Informe Pericial Registrado:" : "Reparación Certificada:"}</span>
                   <p className="text-[11px] text-slate-400 leading-normal font-light mt-1 bg-black/40 p-2 rounded-lg border border-white/5">
                     "{trabajoTexto}"
                   </p>

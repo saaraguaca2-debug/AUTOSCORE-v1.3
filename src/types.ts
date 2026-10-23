@@ -28,6 +28,7 @@ export interface HistorialRow {
   codigoMecanico: string;
   taller: string;
   trabajoRealizado: string;
+  tipoRegistro?: "Reparación" | "Inspección Técnica";
   telefonoMecanico?: string;
   nombreMecanico?: string;
   evaluacion?: "Bueno" | "Malo"; // Calificación dada por el dueño

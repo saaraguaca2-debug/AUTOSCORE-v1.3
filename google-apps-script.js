@@ -53,6 +53,29 @@ function findColumnIndex(headers, columnName) {
 }
 
 /**
+ * Auto-detecta si una columna existe en la fila 1 (cabeceras).
+ * Si no existe, la crea automáticamente en la siguiente columna disponible.
+ * Retorna el índice (0-based) de la columna.
+ */
+function ensureColumnHeader(sheet, columnName) {
+  if (!sheet) return -1;
+  const lastCol = sheet.getLastColumn();
+  if (lastCol === 0) {
+    sheet.getRange(1, 1).setValue(columnName);
+    return 0;
+  }
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const idx = findColumnIndex(headers, columnName);
+  if (idx !== -1) {
+    return idx;
+  }
+  // Auto-crear en la primera fila la columna faltante
+  const newCol = lastCol + 1;
+  sheet.getRange(1, newCol).setValue(columnName);
+  return newCol - 1;
+}
+
+/**
  * Lee un valor de fila de manera segura
  */
 function getRowValue(row, headers, colName, defaultValue) {
@@ -459,13 +482,32 @@ function doGet(e) {
             const comVal = hComEval !== -1 && row[hComEval] !== undefined ? row[hComEval].toString().trim() : "";
             const fechaEvalVal = hFechaEval !== -1 && row[hFechaEval] !== undefined ? row[hFechaEval].toString().trim() : "";
             
+            const strTrabajo = hTrabajo !== -1 && row[hTrabajo] !== undefined ? row[hTrabajo].toString().trim() : "";
+            let tipoRegVal = "";
+            const hTipoReg = findColumnIndex(headersH, "TipoRegistro");
+            if (hTipoReg !== -1 && row[hTipoReg] !== undefined && row[hTipoReg]) {
+              tipoRegVal = row[hTipoReg].toString().trim();
+            }
+            if (!tipoRegVal) {
+              if (strTrabajo.indexOf("INSPECCIÓN TÉCNICA") !== -1 || 
+                  strTrabajo.indexOf("INSPECCION TECNICA") !== -1 || 
+                  strTrabajo.indexOf("RE-INSPECCIÓN TÉCNICA") !== -1 || 
+                  strTrabajo.indexOf("RE-INSPECCION TECNICA") !== -1 ||
+                  strTrabajo.indexOf("CERTIFICACIÓN DE INSPECCIÓN") !== -1) {
+                tipoRegVal = "Inspección Técnica";
+              } else {
+                tipoRegVal = "Reparación";
+              }
+            }
+            
             timeline.push({
               idHistorial: hId !== -1 && row[hId] !== undefined ? Number(row[hId]) : j,
               fecha: formattedFecha,
               kilometraje: km,
               codigoMecanico: codigoFirma,
               taller: (hTaller !== -1 && row[hTaller] !== undefined && row[hTaller]) ? row[hTaller].toString().trim() : "Taller Autorizado",
-              trabajoRealizado: hTrabajo !== -1 && row[hTrabajo] !== undefined ? row[hTrabajo].toString().trim() : "",
+              trabajoRealizado: strTrabajo,
+              tipoRegistro: tipoRegVal,
               telefonoMecanico: telDelTaller,
               evaluacion: evalVal,
               comentarioEvaluacion: comVal,
@@ -805,15 +847,31 @@ function doPost(e) {
           }
         }
         const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
-        sheetHistorial.appendRow([
-          newId,
-          placa,
-          fechaActual,
-          kilometraje,
-          codigoMecanico,
-          mecanico.taller || "Taller Independiente",
-          trabajo
-        ]);
+        
+        // Auto-crear cabecera 'TipoRegistro' en Historial si no existe
+        ensureColumnHeader(sheetHistorial, "TipoRegistro");
+        const hData = sheetHistorial.getDataRange().getValues();
+        const hH = hData[0];
+        const newRow = new Array(hH.length).fill("");
+        const colId = findColumnIndex(hH, "IdHistorial");
+        const colPla = findColumnIndex(hH, "Placa");
+        const colFec = findColumnIndex(hH, "Fecha");
+        const colKm = findColumnIndex(hH, "Kilometraje");
+        const colCod = findColumnIndex(hH, "CodigoMecanico");
+        const colTal = findColumnIndex(hH, "Taller");
+        const colTra = findColumnIndex(hH, "TrabajoRealizado");
+        const colTipo = findColumnIndex(hH, "TipoRegistro");
+
+        if (colId !== -1) newRow[colId] = newId; else newRow[0] = newId;
+        if (colPla !== -1) newRow[colPla] = placa; else newRow[1] = placa;
+        if (colFec !== -1) newRow[colFec] = fechaActual; else newRow[2] = fechaActual;
+        if (colKm !== -1) newRow[colKm] = kilometraje; else newRow[3] = kilometraje;
+        if (colCod !== -1) newRow[colCod] = codigoMecanico; else newRow[4] = codigoMecanico;
+        if (colTal !== -1) newRow[colTal] = mecanico.taller || "Taller Independiente"; else newRow[5] = mecanico.taller || "Taller Independiente";
+        if (colTra !== -1) newRow[colTra] = trabajo; else newRow[6] = trabajo;
+        if (colTipo !== -1) newRow[colTipo] = "Inspección Técnica";
+
+        sheetHistorial.appendRow(newRow);
       }
       
       return getCorsResponse({
@@ -824,12 +882,151 @@ function doPost(e) {
           score: score,
           idHistorial: newId,
           mecanico: mecanico.nombre,
+          taller: mecanico.taller,
+          tipoRegistro: "Inspección Técnica"
+        }
+      });
+    }
+
+    // ACCIÓN 3: Registrar Inspección Técnica Oficial (Explícitamente como Inspección Técnica, no como Reparación)
+    if (accion === "registrarInspeccionTecnica") {
+      const placa = (payload.placa || "").toString().trim().toUpperCase();
+      const score = Number(payload.score || 90);
+      const codigoMecanico = (payload.codigoMecanico || payload.codMec || "").toString().trim();
+      const kilometraje = Number(payload.kilometraje || 0);
+      const trabajo = (payload.trabajo || "").toString().trim();
+      const marca = (payload.marca || "").toString().trim();
+      const modelo = (payload.modelo || "").toString().trim();
+      const anio = Number(payload.anio || 0);
+      const idDueno = (payload.idDueno || "").toString().trim();
+      const esReinspeccion = !!payload.esReinspeccion;
+      const estadoCertificado = (payload.estadoCertificado || "Activo").toString().trim();
+
+      if (!placa || !codigoMecanico || !trabajo) {
+        return getCorsResponse({ success: false, error: "Faltan datos obligatorios para la inspección técnica (placa, mecánico, trabajo)." });
+      }
+
+      // Validar mecánico
+      const sheetMecanicos = sheetApp.getSheetByName("Mecanicos");
+      let mecanico = null;
+      if (sheetMecanicos) {
+        const mData = sheetMecanicos.getDataRange().getValues();
+        const hM = mData[0];
+        const rM = mData.slice(1);
+        for (let i = 0; i < rM.length; i++) {
+          if (getRowValue(rM[i], hM, "CodigoMecanico").trim() === codigoMecanico) {
+            mecanico = {
+              codigo: codigoMecanico,
+              nombre: getRowValue(rM[i], hM, "Nombre"),
+              taller: getRowValue(rM[i], hM, "Taller"),
+              estado: getRowValue(rM[i], hM, "Estado", "Activo").trim()
+            };
+            break;
+          }
+        }
+      }
+
+      if (!mecanico) {
+        return getCorsResponse({ success: false, error: "Código de mecánico no verificado en AutoScore." });
+      }
+
+      if (mecanico.estado.toLowerCase() === "suspendido") {
+        return getCorsResponse({
+          success: false,
+          error: "ACCESO DENEGADO: Tu taller o cuenta de mecánico se encuentra SUSPENDIDA. Regulariza tu membresía de AutoScore con el Administrador."
+        });
+      }
+
+      // Registrar o actualizar vehículo en 'Vehiculos'
+      const sheetVehiculos = sheetApp.getSheetByName("Vehiculos");
+      if (!sheetVehiculos) {
+        return getCorsResponse({ success: false, error: "Pestaña 'Vehiculos' no configurada." });
+      }
+
+      const vData = sheetVehiculos.getDataRange().getValues();
+      const hV = vData[0];
+      const idxPlaca = findColumnIndex(hV, "Placa");
+      const idxScore = findColumnIndex(hV, "Score");
+      const idxEstado = findColumnIndex(hV, "EstadoCertificado");
+
+      let filaVehiculo = -1;
+      for (let i = 1; i < vData.length; i++) {
+        if (vData[i][idxPlaca].toString().trim().toUpperCase() === placa) {
+          filaVehiculo = i + 1;
+          break;
+        }
+      }
+
+      if (filaVehiculo !== -1) {
+        if (idxScore !== -1) sheetVehiculos.getRange(filaVehiculo, idxScore + 1).setValue(score);
+        if (idxEstado !== -1) sheetVehiculos.getRange(filaVehiculo, idxEstado + 1).setValue(estadoCertificado);
+      } else {
+        if (!marca || !modelo || !anio || !idDueno) {
+          return getCorsResponse({ success: false, error: "Faltan datos del vehículo para la primera inspección técnica." });
+        }
+        sheetVehiculos.appendRow([placa, marca, modelo, anio, idDueno, score, estadoCertificado]);
+      }
+
+      // Guardar en 'Historial' explícitamente como Inspección Técnica
+      const sheetHistorial = sheetApp.getSheetByName("Historial");
+      if (!sheetHistorial) {
+        return getCorsResponse({ success: false, error: "Pestaña 'Historial' no configurada." });
+      }
+
+      const lastRow = sheetHistorial.getLastRow();
+      let newId = 10001;
+      if (lastRow > 1) {
+        const lastId = sheetHistorial.getRange(lastRow, 1).getValue();
+        if (!isNaN(lastId)) {
+          newId = Number(lastId) + 1;
+        }
+      }
+
+      const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
+      
+      // Auto-crear cabecera 'TipoRegistro' en Historial si no existe
+      ensureColumnHeader(sheetHistorial, "TipoRegistro");
+      const hData = sheetHistorial.getDataRange().getValues();
+      const hH = hData[0];
+      const newRow = new Array(hH.length).fill("");
+      const colId = findColumnIndex(hH, "IdHistorial");
+      const colPla = findColumnIndex(hH, "Placa");
+      const colFec = findColumnIndex(hH, "Fecha");
+      const colKm = findColumnIndex(hH, "Kilometraje");
+      const colCod = findColumnIndex(hH, "CodigoMecanico");
+      const colTal = findColumnIndex(hH, "Taller");
+      const colTra = findColumnIndex(hH, "TrabajoRealizado");
+      const colTipo = findColumnIndex(hH, "TipoRegistro");
+
+      if (colId !== -1) newRow[colId] = newId; else newRow[0] = newId;
+      if (colPla !== -1) newRow[colPla] = placa; else newRow[1] = placa;
+      if (colFec !== -1) newRow[colFec] = fechaActual; else newRow[2] = fechaActual;
+      if (colKm !== -1) newRow[colKm] = kilometraje; else newRow[3] = kilometraje;
+      if (colCod !== -1) newRow[colCod] = codigoMecanico; else newRow[4] = codigoMecanico;
+      if (colTal !== -1) newRow[colTal] = mecanico.taller || "Taller Independiente"; else newRow[5] = mecanico.taller || "Taller Independiente";
+      if (colTra !== -1) newRow[colTra] = trabajo; else newRow[6] = trabajo;
+      if (colTipo !== -1) newRow[colTipo] = "Inspección Técnica";
+
+      sheetHistorial.appendRow(newRow);
+
+      return getCorsResponse({
+        success: true,
+        message: esReinspeccion
+          ? "¡Re-Inspección Técnica completada y Score actualizado a " + score + " pts!"
+          : "¡Inspección Técnica Oficial de Ingreso sellada y registrada!",
+        data: {
+          idHistorial: newId,
+          placa: placa,
+          score: score,
+          tipoRegistro: "Inspección Técnica",
+          fecha: fechaActual,
+          mecanico: mecanico.nombre,
           taller: mecanico.taller
         }
       });
     }
     
-    // ACCIÓN 3: Registrar Mantenimiento del Técnico (Bloquea si el mecánico está Suspendido)
+    // ACCIÓN 4: Registrar Mantenimiento del Técnico (Reparaciones cotidianas)
     if (accion === "registrarMantenimiento" || !accion) {
       const codigoMecanico = (payload.codigoMecanico || payload.codMec || "").toString().trim();
       const placa = (payload.placa || "").toString().trim().toUpperCase();
@@ -914,15 +1111,30 @@ function doPost(e) {
       
       const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
       
-      sheetHistorial.appendRow([
-        newId,
-        placa,
-        fechaActual,
-        kilometraje,
-        codigoMecanico,
-        mecanico.taller || "Taller Independiente",
-        trabajo
-      ]);
+      // Auto-crear cabecera 'TipoRegistro' en Historial si no existe
+      ensureColumnHeader(sheetHistorial, "TipoRegistro");
+      const hData = sheetHistorial.getDataRange().getValues();
+      const hH = hData[0];
+      const newRow = new Array(hH.length).fill("");
+      const colId = findColumnIndex(hH, "IdHistorial");
+      const colPla = findColumnIndex(hH, "Placa");
+      const colFec = findColumnIndex(hH, "Fecha");
+      const colKm = findColumnIndex(hH, "Kilometraje");
+      const colCod = findColumnIndex(hH, "CodigoMecanico");
+      const colTal = findColumnIndex(hH, "Taller");
+      const colTra = findColumnIndex(hH, "TrabajoRealizado");
+      const colTipo = findColumnIndex(hH, "TipoRegistro");
+
+      if (colId !== -1) newRow[colId] = newId; else newRow[0] = newId;
+      if (colPla !== -1) newRow[colPla] = placa; else newRow[1] = placa;
+      if (colFec !== -1) newRow[colFec] = fechaActual; else newRow[2] = fechaActual;
+      if (colKm !== -1) newRow[colKm] = kilometraje; else newRow[3] = kilometraje;
+      if (colCod !== -1) newRow[colCod] = codigoMecanico; else newRow[4] = codigoMecanico;
+      if (colTal !== -1) newRow[colTal] = mecanico.taller || "Taller Independiente"; else newRow[5] = mecanico.taller || "Taller Independiente";
+      if (colTra !== -1) newRow[colTra] = trabajo; else newRow[6] = trabajo;
+      if (colTipo !== -1) newRow[colTipo] = "Reparación";
+
+      sheetHistorial.appendRow(newRow);
       
       return getCorsResponse({
         success: true,
