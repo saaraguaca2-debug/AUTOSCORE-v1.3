@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Mecanico, Vehiculo } from "../types";
 import { notifyDataChanged } from "../mockData";
+import { sanitizarComentarioYTexto } from "../utils";
 
 interface MecanicoViewProps {
   appScriptUrl: string;
@@ -469,7 +470,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
     setFormError(null);
     setFormSuccess(null);
 
-    const descripcionCombinada = `Realizado por: ${loggedMecanico.nombre} (${loggedMecanico.codigoMecanico})\nTrabajo: ${cleanTrabajo}`;
+    const descripcionCombinada = `Realizado por: ${loggedMecanico.nombre} | Taller: ${loggedMecanico.taller || "Taller Autorizado"}\nTrabajo: ${cleanTrabajo}`;
 
     const payload = {
       codigoMecanico: loggedMecanico.codigoMecanico,
@@ -954,7 +955,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
                 const lineasInforme: string[] = [
                   `📋 TIPO DE REGISTRO: INSPECCIÓN TÉCNICA OFICIAL (NO ES REPARACIÓN)`,
-                  `Perito Acreditado: ${loggedMecanico.nombre} | Reg: ${loggedMecanico.codigoMecanico} | Taller: ${loggedMecanico.taller}`,
+                  `Perito Acreditado: ${loggedMecanico.nombre} | Taller Oficial: ${loggedMecanico.taller} (Acreditación Homologada)`,
                   `Vehículo: ${cleanMarca} ${cleanModelo} (${anioNum}) | Combustible: ${inspCombustible} | Transmisión: ${inspTransmision}`,
                   `Odómetro Certificado: ${kmNum.toLocaleString("es-ES")} km`,
                   `Calificación Pericial: ${scoreCalculado}/100 pts (${esReinspeccion ? `Re-evaluación técnica por mejoras; anterior: ${vehiculoExistenteInfo?.scoreActual ?? "?"} pts` : "Inspección técnica de ingreso oficial"})`,
@@ -1750,7 +1751,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                                   </div>
 
                                   <div className="text-[10px] text-slate-400 font-mono">
-                                    Vehículo: {h.placa} · Trabajo: "{h.trabajoRealizado}"
+                                    Vehículo: {h.placa} · Trabajo: "{sanitizarComentarioYTexto(h.trabajoRealizado, [loggedMecanico?.codigoMecanico, h.codigoMecanico])}"
                                   </div>
 
                                   {h.comentarioEvaluacion && (
@@ -1759,7 +1760,7 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                                         ? "bg-black/40 text-emerald-100 border-emerald-500/20"
                                         : "bg-black/50 text-red-200 border-red-500/40 font-medium"
                                     }`}>
-                                      "{h.comentarioEvaluacion}"
+                                      "{sanitizarComentarioYTexto(h.comentarioEvaluacion, [loggedMecanico?.codigoMecanico, h.codigoMecanico])}"
                                     </div>
                                   )}
                                 </div>

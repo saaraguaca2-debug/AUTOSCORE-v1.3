@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Vehiculo, HistorialRow } from "../types";
 import { notifyDataChanged } from "../mockData";
+import { sanitizarComentarioYTexto } from "../utils";
 
 // Decodificador seguro para prevenir fallas fatales (URI Malformed) en navegadores móviles
 function safeDecodeURIComponent(str: string): string {
@@ -176,8 +177,18 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
       if (res.ok) {
         const json = await res.json();
         if (json && json.success) {
+          const allCodes = Array.isArray(json.mecanicos) 
+            ? json.mecanicos.map((m: any) => m.codigoMecanico).filter(Boolean) 
+            : [];
           if (Array.isArray(json.mecanicos)) setDirectorioMecanicos(json.mecanicos);
-          if (Array.isArray(json.historial)) setDirectorioHistorial(json.historial);
+          if (Array.isArray(json.historial)) {
+            const histSanitizado = json.historial.map((h: any) => ({
+              ...h,
+              trabajoRealizado: sanitizarComentarioYTexto(h.trabajoRealizado || h.trabajo || "", [h.codigoMecanico, ...allCodes]),
+              comentarioEvaluacion: sanitizarComentarioYTexto(h.comentarioEvaluacion || h.comentario || "", [h.codigoMecanico, ...allCodes])
+            }));
+            setDirectorioHistorial(histSanitizado);
+          }
         }
       }
     } catch (e) {
@@ -614,7 +625,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
 
     const targetId = evalModalItem.idHistorial;
     const finalTipo = evalTipo;
-    const finalCom = evalComentario.trim();
+    const finalCom = sanitizarComentarioYTexto(evalComentario.trim(), [evalModalItem.codigoMecanico]);
     const fechaHoy = new Date().toISOString().split("T")[0];
 
     // 1. Actualización optimista inmediata en el estado local de la interfaz
@@ -768,7 +779,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           </div>
           {row.comentarioEvaluacion ? (
             <p className="text-[11px] text-slate-200 bg-black/40 p-2 rounded-lg border border-white/5 font-sans leading-relaxed">
-              "{row.comentarioEvaluacion}"
+              "{sanitizarComentarioYTexto(row.comentarioEvaluacion, [row.codigoMecanico])}"
             </p>
           ) : !esBueno ? (
             <p className="text-[10px] text-slate-400 italic">
@@ -1092,6 +1103,13 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
         }
       } catch (e) {
         // Ignorar
+      }
+
+      // 13. Sanitizar de forma estricta comentario y trabajo para que NUNCA expongan códigos de mecánico
+      const codigosPrivados = [normalized.codigoMecanico, row.codigoMecanico, row.codigo].filter(Boolean);
+      normalized.trabajoRealizado = sanitizarComentarioYTexto(normalized.trabajoRealizado, codigosPrivados);
+      if (normalized.comentarioEvaluacion) {
+        normalized.comentarioEvaluacion = sanitizarComentarioYTexto(normalized.comentarioEvaluacion, codigosPrivados);
       }
 
       return normalized as HistorialRow;
@@ -1929,7 +1947,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                       <User className="w-3 h-3 text-emerald-400 shrink-0" />
                                       <span>Mecánico: <strong className="text-white font-bold">{nombreMec}</strong></span>
                                     </div>
-                                    {maskedCode && <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>}
+                                    <span className="text-emerald-400/90 font-medium text-[9px]">• Homologación Oficial</span>
                                     {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
                                   </div>
                                 </div>
@@ -2291,7 +2309,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                                       <User className="w-3 h-3 text-emerald-400 shrink-0" />
                                       <span>Mecánico: <strong className="text-slate-100 font-black">{nombreMec}</strong></span>
                                     </div>
-                                    <span className="text-slate-400 font-mono text-[9px]">• Sello: #{maskedCode}</span>
+                                    <span className="text-emerald-400/90 font-medium text-[9px]">• Homologación Oficial</span>
                                     {tel && <span className="text-slate-400 font-mono text-[9px]">• Tel: +{tel}</span>}
                                   </div>
                                 </div>
@@ -2475,7 +2493,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
           trabajoTexto.includes("INSPECCIÓN TÉCNICA") || 
           trabajoTexto.includes("TIPO DE REGISTRO: INSPECCIÓN TÉCNICA");
 
-        const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore ${esInspeccionModal ? "una Inspección Técnica Oficial" : "un mantenimiento/reparación"} firmado por el taller "${selectedMantenimiento.taller || "Taller"}" con sello digital #${maskedCode} el día ${fechaTexto} con ${kmTexto} km ("${trabajoTexto}"). ¿Podrían corroborar la validez de este registro técnico? Muchas gracias.`;
+        const modalMsg = `Hola ${tallerName}. Estoy evaluando la compra del vehículo placa ${selectedCar?.placa || ""} y tiene registrado en AutoScore ${esInspeccionModal ? "una Inspección Técnica Oficial" : "un mantenimiento/reparación"} firmado por el taller "${selectedMantenimiento.taller || "Taller"}" con acreditación técnica verificada el día ${fechaTexto} con ${kmTexto} km ("${trabajoTexto}"). ¿Podrían corroborar la validez de este registro técnico? Muchas gracias.`;
 
         return (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in no-print">
@@ -2502,7 +2520,9 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                   <User className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span>{esInspeccionModal ? "Perito Certificador:" : "Mecánico Certificador:"} <strong className="text-white font-black">{mecanicoNombre}</strong></span>
                 </div>
-                <p className="text-[10px] text-slate-400 font-mono mt-2">Sello Digital: #M****</p>
+                <div className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-bold mt-2 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                  <CheckCircle className="w-3 h-3 text-emerald-400" /> Acreditación Oficial Verificada
+                </div>
               </div>
 
               <div className="space-y-2 text-xs bg-slate-950 p-3.5 border border-white/5 rounded-xl text-slate-300">
@@ -2575,12 +2595,15 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
               <h4 className="text-base font-display font-black text-white mt-0.5">
                 {evalModalItem.taller || "Taller Autorizado"}
               </h4>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Técnico: <strong className="text-slate-200">{evalModalItem.nombreMecanico || "Mecánico"}</strong> ({evalModalItem.codigoMecanico})
+              <p className="text-[11px] text-slate-400 mt-1 flex items-center justify-center gap-1.5">
+                <span>Técnico: <strong className="text-slate-200">{evalModalItem.nombreMecanico || "Mecánico"}</strong></span>
+                <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  <CheckCircle className="w-2.5 h-2.5" /> Homologado
+                </span>
               </p>
               <div className="mt-2 bg-slate-950/70 p-2.5 rounded-xl border border-white/5 text-[10px] text-slate-300 text-left space-y-0.5">
                 <span className="text-slate-400 block font-mono">Trabajo evaluado:</span>
-                <span className="font-semibold text-amber-400 block">"{evalModalItem.trabajo}"</span>
+                <span className="font-semibold text-amber-400 block">"{sanitizarComentarioYTexto(evalModalItem.trabajo, [evalModalItem.codigoMecanico])}"</span>
                 <span className="text-[9px] text-slate-500 block font-mono">Fecha del servicio: {evalModalItem.fecha}</span>
               </div>
             </div>
@@ -2840,7 +2863,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Buscar taller, mecánico o código..."
+                  placeholder="Buscar taller o mecánico..."
                   value={filtroDirectorio}
                   onChange={(e) => setFiltroDirectorio(e.target.value)}
                   className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none"
@@ -2898,8 +2921,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 const lista = directorioMecanicos.filter((m: any) => {
                   const matchQuery = !query || 
                     (m.taller && m.taller.toLowerCase().includes(query)) ||
-                    (m.nombre && m.nombre.toLowerCase().includes(query)) ||
-                    (m.codigoMecanico && m.codigoMecanico.toLowerCase().includes(query));
+                    (m.nombre && m.nombre.toLowerCase().includes(query));
                   
                   if (!matchQuery) return false;
 
@@ -2958,7 +2980,10 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                             </h4>
                           </div>
                           <span className="text-[11px] text-slate-300 block mt-0.5">
-                            Mecánico: <strong className="text-white">{mec.nombre}</strong> <span className="text-slate-500 font-mono">({mec.codigoMecanico})</span>
+                            Mecánico: <strong className="text-white">{mec.nombre}</strong>
+                            <span className="inline-flex items-center gap-1 text-[9.5px] text-emerald-400 font-bold ml-2 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                              <CheckCircle className="w-2.5 h-2.5" /> Homologado
+                            </span>
                           </span>
                         </div>
 
@@ -3105,7 +3130,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                       </div>
 
                       <div className="text-[10px] text-slate-400 font-mono">
-                        Vehículo: {op.placa ? op.placa.slice(0, 3) + "***" : "Homologado"} · Reparación: "{op.trabajoRealizado}"
+                        Vehículo: {op.placa ? op.placa.slice(0, 3) + "***" : "Homologado"} · Servicio: "{sanitizarComentarioYTexto(op.trabajoRealizado, [op.codigoMecanico, tallerDetalleModal.mecanico?.codigoMecanico])}"
                       </div>
 
                       {op.comentarioEvaluacion ? (
@@ -3114,7 +3139,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                             ? "bg-black/40 text-emerald-100 border-emerald-500/20" 
                             : "bg-black/50 text-red-100 border-red-500/30 font-medium"
                         }`}>
-                          "{op.comentarioEvaluacion}"
+                          "{sanitizarComentarioYTexto(op.comentarioEvaluacion, [op.codigoMecanico, tallerDetalleModal.mecanico?.codigoMecanico])}"
                         </p>
                       ) : (
                         <p className="text-[10px] text-slate-500 italic">

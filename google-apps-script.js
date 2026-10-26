@@ -102,6 +102,31 @@ function parseDate(dateStr) {
 }
 
 /**
+ * Sanitiza textos públicos (comentarios, trabajos, observaciones)
+ * eliminando códigos de acceso privado de mecánicos y talleres.
+ */
+function sanitizarTextoPrivado(texto, codigos) {
+  if (!texto) return "";
+  var limpio = texto.toString();
+  limpio = limpio.replace(/Realizado por:\s*([^\(\n\r]+?)\s*\([^\)]*?\)/gi, "Realizado por: $1");
+  limpio = limpio.replace(/\|\s*Reg:\s*[^|\n]+\s*\|/gi, "| Acreditación Homologada |");
+  limpio = limpio.replace(/Reg:\s*[A-Za-z0-9_\-]+/gi, "Acreditación Homologada");
+  limpio = limpio.replace(/(?:c[oó]digo(?:\s+de\s+(?:acceso|mec[aá]nico|taller))?|clave(?:\s+de\s+acceso)?|id\s+mec[aá]nico)\s*[:#=\-]?\s*[A-Za-z0-9_\-]+/gi, "");
+  if (codigos && Array.isArray(codigos)) {
+    for (var i = 0; i < codigos.length; i++) {
+      var c = codigos[i];
+      if (c && typeof c === "string" && c.trim().length >= 2) {
+        var esc = c.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        limpio = limpio.replace(new RegExp('\\(\\s*' + esc + '\\s*\\)', 'gi'), '');
+        limpio = limpio.replace(new RegExp('#' + esc + '\\b', 'gi'), '');
+        limpio = limpio.replace(new RegExp('\\b' + esc + '\\b', 'gi'), '');
+      }
+    }
+  }
+  return limpio.replace(/\(\s*\)/g, "").replace(/[ \t]+/g, " ").replace(/\n\s*\n/g, "\n").trim();
+}
+
+/**
  * MÉTODO GET: Consulta de información de dueños, certificados e información del Admin
  */
 function doGet(e) {
@@ -173,18 +198,23 @@ function doGet(e) {
           }
         }
 
-        dataOut.historial = d.slice(1).map(row => ({
-          idHistorial: Number(getRowValue(row, h, "IdHistorial")),
-          placa: getRowValue(row, h, "Placa"),
-          fecha: getRowValue(row, h, "Fecha"),
-          kilometraje: Number(getRowValue(row, h, "Kilometraje")),
-          codigoMecanico: getRowValue(row, h, "CodigoMecanico"),
-          taller: getRowValue(row, h, "Taller"),
-          trabajoRealizado: getRowValue(row, h, "TrabajoRealizado"),
-          evaluacion: getRowValue(row, h, "Evaluacion"),
-          comentarioEvaluacion: getRowValue(row, h, "ComentarioEvaluacion"),
-          fechaEvaluacion: getRowValue(row, h, "FechaEvaluacion")
-        })).sort((a,b) => b.idHistorial - a.idHistorial);
+        dataOut.historial = d.slice(1).map(row => {
+          const codMec = getRowValue(row, h, "CodigoMecanico");
+          const trabOriginal = getRowValue(row, h, "TrabajoRealizado");
+          const comOriginal = getRowValue(row, h, "ComentarioEvaluacion");
+          return {
+            idHistorial: Number(getRowValue(row, h, "IdHistorial")),
+            placa: getRowValue(row, h, "Placa"),
+            fecha: getRowValue(row, h, "Fecha"),
+            kilometraje: Number(getRowValue(row, h, "Kilometraje")),
+            codigoMecanico: codMec,
+            taller: getRowValue(row, h, "Taller"),
+            trabajoRealizado: sanitizarTextoPrivado(trabOriginal, [codMec]),
+            evaluacion: getRowValue(row, h, "Evaluacion"),
+            comentarioEvaluacion: sanitizarTextoPrivado(comOriginal, [codMec]),
+            fechaEvaluacion: getRowValue(row, h, "FechaEvaluacion")
+          };
+        }).sort((a,b) => b.idHistorial - a.idHistorial);
       }
 
       const sMec = sheetApp.getSheetByName("Mecanicos");
@@ -1204,8 +1234,9 @@ function doPost(e) {
       }
       
       const fechaActual = Utilities.formatDate(new Date(), "GMT-4", "yyyy-MM-dd HH:mm:ss");
+      const comentarioLimpio = sanitizarTextoPrivado(comentario);
       sheetHistorial.getRange(filaTarget, idxEval + 1).setValue(evaluacion);
-      sheetHistorial.getRange(filaTarget, idxCom + 1).setValue(comentario);
+      sheetHistorial.getRange(filaTarget, idxCom + 1).setValue(comentarioLimpio);
       sheetHistorial.getRange(filaTarget, idxFechaEval + 1).setValue(fechaActual);
       
       return getCorsResponse({
