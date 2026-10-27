@@ -56,6 +56,48 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
 
   const [filtroOpiniones, setFiltroOpiniones] = useState<"todas" | "bueno" | "malo">("todas");
 
+  // Estados de edición de especialización y servicios del taller
+  const [isEditingEspecialidad, setIsEditingEspecialidad] = useState(false);
+  const [especialidadInput, setEspecialidadInput] = useState("");
+  const [savingEspecialidad, setSavingEspecialidad] = useState(false);
+  const [especialidadSuccess, setEspecialidadSuccess] = useState<string | null>(null);
+
+  const handleGuardarEspecialidad = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loggedMecanico) return;
+    setSavingEspecialidad(true);
+    const cleanEsp = especialidadInput.trim();
+
+    try {
+      if (appScriptUrl) {
+        await fetch(appScriptUrl, {
+          method: "POST",
+          mode: "cors",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            accion: "actualizarEspecialidadMecanico",
+            codigoMecanico: loggedMecanico.codigoMecanico,
+            especialidad: cleanEsp
+          })
+        });
+      }
+      setLoggedMecanico(prev => prev ? { ...prev, especialidad: cleanEsp } : null);
+      setEspecialidadSuccess("¡Especialización y servicios del taller actualizados con éxito!");
+      setTimeout(() => setEspecialidadSuccess(null), 3500);
+      setIsEditingEspecialidad(false);
+      notifyDataChanged();
+    } catch (err: any) {
+      console.warn("Error guardando especialidad:", err);
+      setLoggedMecanico(prev => prev ? { ...prev, especialidad: cleanEsp } : null);
+      setEspecialidadSuccess("Especialización guardada en tu sesión.");
+      setTimeout(() => setEspecialidadSuccess(null), 3000);
+      setIsEditingEspecialidad(false);
+      notifyDataChanged();
+    } finally {
+      setSavingEspecialidad(false);
+    }
+  };
+
   // Estados del Formulario de Mantenimiento
   const [placa, setPlaca] = useState("");
   const [kilometraje, setKilometraje] = useState("");
@@ -1648,6 +1690,124 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
                         <span className="text-amber-400 font-black text-lg block">{totalTrabajos}</span>
                         <span className="text-[9px] text-slate-400 uppercase font-mono">Servicios</span>
                       </div>
+                    </div>
+
+                    {/* Perfil Técnico: Especialización y Servicios del Taller */}
+                    <div className="bg-slate-900/60 border border-amber-500/20 rounded-2xl p-3.5 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Especialización y Servicios del Taller</span>
+                        </div>
+                        {!isEditingEspecialidad ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEspecialidadInput(loggedMecanico?.especialidad || "");
+                              setIsEditingEspecialidad(true);
+                            }}
+                            className="text-[9.5px] font-bold text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-lg border border-amber-500/20 transition-colors cursor-pointer"
+                          >
+                            ✏️ Editar Servicios
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingEspecialidad(false)}
+                            className="text-[9.5px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        )}
+                      </div>
+
+                      {especialidadSuccess && (
+                        <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] rounded-xl flex items-center gap-1.5 animate-in fade-in">
+                          <CheckCircle2 className="w-3 h-3 shrink-0" />
+                          <span>{especialidadSuccess}</span>
+                        </div>
+                      )}
+
+                      {!isEditingEspecialidad ? (
+                        <div className="space-y-1">
+                          <p className="text-[11px] text-slate-300 leading-relaxed font-sans bg-black/40 p-2.5 rounded-xl border border-white/5 font-medium">
+                            {loggedMecanico?.especialidad || "Aún no has configurado la especialidad de tu taller. Haz click en 'Editar Servicios' para describirla y destacarte en el Directorio Oficial de Calidad Técnica."}
+                          </p>
+                          <span className="text-[9px] text-slate-500 block">
+                            Esta descripción es pública para los clientes en el Directorio Oficial y en la Auditoría de Calidad Técnica.
+                          </span>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleGuardarEspecialidad} className="space-y-2">
+                          <textarea
+                            rows={3}
+                            value={especialidadInput}
+                            onChange={(e) => setEspecialidadInput(e.target.value)}
+                            placeholder="Describe los servicios principales de tu taller (ej: Especialistas en inyección electrónica, frenos ABS, motores a gasolina y diésel, transmisiones automáticas)..."
+                            className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+                          />
+
+                          {/* Presets automotrices rápidos */}
+                          <div>
+                            <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
+                              Sugerencias de especialización (click para agregar):
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                "Inyección electrónica y escáner OBD-II",
+                                "Frenos ABS, discos y pastillas",
+                                "Suspensión, dirección y amortiguación",
+                                "Motores gasolina y afinación mayor",
+                                "Motores diésel e inyectores",
+                                "Transmisiones automáticas y cajas",
+                                "Aire acondicionado y climatización",
+                                "Electricidad y baterías",
+                                "Peritajes mecánicos certificados"
+                              ].map((preset, pIdx) => (
+                                <button
+                                  key={pIdx}
+                                  type="button"
+                                  onClick={() => {
+                                    if (!especialidadInput.toLowerCase().includes(preset.toLowerCase())) {
+                                      setEspecialidadInput(prev => prev ? `${prev}, ${preset}` : preset);
+                                    }
+                                  }}
+                                  className="text-[8.5px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 rounded-md px-1.5 py-0.5 transition-colors cursor-pointer"
+                                >
+                                  + {preset}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingEspecialidad(false)}
+                              className="flex-1 bg-slate-900 hover:bg-slate-800 text-slate-400 font-bold py-1.5 rounded-xl text-xs transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={savingEspecialidad}
+                              className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-1.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                            >
+                              {savingEspecialidad ? (
+                                <>
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Guardando...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3 h-3" />
+                                  <span>Guardar Especialización</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </form>
+                      )}
                     </div>
 
                     {/* Alerta de Mejora si tiene evaluaciones negativas */}

@@ -2863,7 +2863,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  placeholder="Buscar taller o mecánico..."
+                  placeholder="Buscar taller, especialidad o servicio (ej: frenos, inyección, motor)..."
                   value={filtroDirectorio}
                   onChange={(e) => setFiltroDirectorio(e.target.value)}
                   className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none"
@@ -2921,7 +2921,8 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 const lista = directorioMecanicos.filter((m: any) => {
                   const matchQuery = !query || 
                     (m.taller && m.taller.toLowerCase().includes(query)) ||
-                    (m.nombre && m.nombre.toLowerCase().includes(query));
+                    (m.nombre && m.nombre.toLowerCase().includes(query)) ||
+                    (m.especialidad && m.especialidad.toLowerCase().includes(query));
                   
                   if (!matchQuery) return false;
 
@@ -2995,6 +2996,17 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                             Calidad Técnica
                           </span>
                         </div>
+                      </div>
+
+                      {/* Breve descripción de servicios y especialización técnica */}
+                      <div className="bg-slate-950/80 border border-amber-500/20 rounded-xl p-2.5 space-y-1">
+                        <div className="flex items-center gap-1.5 text-[9px] font-mono font-bold uppercase tracking-wider text-amber-400">
+                          <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span>Especialización y Servicios del Taller:</span>
+                        </div>
+                        <p className="text-[11px] text-slate-200 leading-relaxed font-sans font-medium">
+                          {mec.especialidad ? mec.especialidad : "Servicio mecánico integral multimarcas, diagnóstico computarizado, frenos, motor y mantenimiento preventivo oficial."}
+                        </p>
                       </div>
 
                       {/* Badge e Indicadores */}
@@ -3095,6 +3107,17 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 <span className="text-red-400 font-mono text-[11px]">
                   👎 {tallerDetalleModal.mecanico.totalNegativas || 0}
                 </span>
+              </div>
+
+              {/* Breve descripción de servicios y especialización técnica */}
+              <div className="bg-slate-950/80 border border-amber-500/20 rounded-2xl p-3 text-left space-y-1 mt-2.5">
+                <div className="flex items-center gap-1.5 text-[9.5px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Especialización y Servicios del Taller:</span>
+                </div>
+                <p className="text-xs text-slate-200 leading-relaxed font-sans font-medium">
+                  {tallerDetalleModal.mecanico.especialidad || "Taller especializado en mecánica integral multimarcas, diagnóstico computarizado, mantenimiento preventivo y peritajes de calidad técnica certificada."}
+                </p>
               </div>
             </div>
 

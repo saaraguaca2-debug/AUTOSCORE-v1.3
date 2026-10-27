@@ -4,6 +4,7 @@ export interface Mecanico {
   taller: string;
   estado: "Activo" | "Suspendido";
   telefono?: string;
+  especialidad?: string; // Breve descripción de servicios o especialización técnica
   totalPositivas?: number;
   totalNegativas?: number;
   totalServicios?: number;

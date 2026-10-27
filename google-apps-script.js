@@ -5,7 +5,7 @@
  * Configura tu Google Sheet con estas 4 pestañas:
  * 1. "Usuarios"   -> Columnas: IdDueno, Nombre, Contrasena, EstadoUsuario
  * 2. "Vehiculos"  -> Columnas: Placa, Marca, Modelo, Anio, IdDueno, Score, EstadoCertificado
- * 3. "Mecanicos"  -> Columnas: CodigoMecanico, Nombre, Taller, Estado, Telefono
+ * 3. "Mecanicos"  -> Columnas: CodigoMecanico, Nombre, Taller, Estado, Telefono, Especialidad
  * 4. "Historial"  -> Columnas: IdHistorial, Placa, Fecha, Kilometraje, CodigoMecanico, Taller, TrabajoRealizado
  */
 
@@ -232,6 +232,7 @@ function doGet(e) {
             taller: getRowValue(row, h, "Taller"),
             estado: getRowValue(row, h, "Estado", "Activo"),
             telefono: getRowValue(row, h, "Telefono"),
+            especialidad: getRowValue(row, h, "Especialidad", getRowValue(row, h, "Especializacion", getRowValue(row, h, "Servicios", ""))),
             totalPositivas: st.pos,
             totalNegativas: st.neg,
             totalServicios: st.total,
@@ -1339,15 +1340,65 @@ function doPost(e) {
         const nombre = payload.nombre || "";
         const taller = payload.taller || "";
         const telefono = payload.telefono || "";
+        const especialidad = payload.especialidad || "";
+        
+        // Auto-crear columna Especialidad en caso de que aún no exista
+        ensureColumnHeader(sheetMec, "Especialidad");
+
         sheetMec.appendRow([
           targetId, // CodigoMecanico
           nombre,
           taller,
           "Activo",
-          telefono
+          telefono,
+          especialidad
         ]);
         return getCorsResponse({ success: true, message: "Mecánico agregado exitosamente." });
       }
+
+      if (subAccion === "actualizarEspecialidadMecanico" || subAccion === "actualizarEspecialidad") {
+        const sheetMec = sheetApp.getSheetByName("Mecanicos");
+        if (!sheetMec) return getCorsResponse({ success: false, error: "Pestaña 'Mecanicos' no encontrada." });
+        const d = sheetMec.getDataRange().getValues();
+        const h = d[0];
+        const idxId = findColumnIndex(h, "CodigoMecanico");
+        let idxEsp = findColumnIndex(h, "Especialidad");
+        if (idxEsp === -1) {
+          idxEsp = ensureColumnHeader(sheetMec, "Especialidad");
+        }
+        const nuevaEsp = (payload.especialidad || nuevoEstado || "").toString().trim();
+        for (let i = 1; i < d.length; i++) {
+          if (d[i][idxId].toString().trim().toUpperCase() === targetId.toUpperCase()) {
+            sheetMec.getRange(i + 1, idxEsp + 1).setValue(nuevaEsp);
+            return getCorsResponse({ success: true, message: "Especialidad actualizada correctamente: " + nuevaEsp });
+          }
+        }
+        return getCorsResponse({ success: false, error: "Mecánico no encontrado." });
+      }
+    }
+
+    // ACTUALIZACIÓN DIRECTA DE ESPECIALIDAD DESDE EL PANEL DEL MECÁNICO
+    if (accion === "actualizarEspecialidadMecanico" || accion === "actualizarEspecialidad") {
+      const codigoMecanico = (payload.codigoMecanico || payload.codMec || "").toString().trim();
+      const especialidad = (payload.especialidad || payload.descripcion || "").toString().trim();
+      if (!codigoMecanico) return getCorsResponse({ success: false, error: "Código de mecánico no especificado." });
+
+      const sheetMec = sheetApp.getSheetByName("Mecanicos");
+      if (!sheetMec) return getCorsResponse({ success: false, error: "Pestaña 'Mecanicos' no encontrada." });
+      const d = sheetMec.getDataRange().getValues();
+      const h = d[0];
+      const idxId = findColumnIndex(h, "CodigoMecanico");
+      let idxEsp = findColumnIndex(h, "Especialidad");
+      if (idxEsp === -1) {
+        idxEsp = ensureColumnHeader(sheetMec, "Especialidad");
+      }
+      for (let i = 1; i < d.length; i++) {
+        if (d[i][idxId].toString().trim().toUpperCase() === codigoMecanico.toUpperCase()) {
+          sheetMec.getRange(i + 1, idxEsp + 1).setValue(especialidad);
+          return getCorsResponse({ success: true, message: "Especialidad actualizada exitosamente.", especialidad: especialidad });
+        }
+      }
+      return getCorsResponse({ success: false, error: "Técnico no encontrado en la base de datos." });
     }
     
     return getCorsResponse({ success: false, error: "Acción POST no reconocida." });

@@ -39,6 +39,9 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
   const [newMecNombre, setNewMecNombre] = useState("");
   const [newMecTaller, setNewMecTaller] = useState("");
   const [newMecTelefono, setNewMecTelefono] = useState("");
+  const [newMecEspecialidad, setNewMecEspecialidad] = useState("");
+  const [editingMecEspCode, setEditingMecEspCode] = useState<string | null>(null);
+  const [editingMecEspValue, setEditingMecEspValue] = useState("");
   const [formMecError, setFormMecError] = useState<string | null>(null);
   const [formMecSuccess, setFormMecSuccess] = useState<string | null>(null);
   const [isSubmittingMec, setIsSubmittingMec] = useState(false);
@@ -160,6 +163,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
     const name = newMecNombre.trim();
     const workshop = newMecTaller.trim();
     const phone = newMecTelefono.trim();
+    const especialidad = newMecEspecialidad.trim();
 
     if (!code || !name || !workshop || !phone) {
       setFormMecError("Rellene todos los campos obligatorios.");
@@ -171,13 +175,15 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
       await ejecutarUpdate("agregarMecanico", code, "Activo", {
         nombre: name,
         taller: workshop,
-        telefono: phone
+        telefono: phone,
+        especialidad: especialidad
       });
       setFormMecSuccess(`Técnico ${name} registrado con código ${code}.`);
       setNewMecCodigo("");
       setNewMecNombre("");
       setNewMecTaller("");
       setNewMecTelefono("");
+      setNewMecEspecialidad("");
     } catch (err: any) {
       setFormMecError(err.message || "Error al registrar.");
     } finally {
@@ -698,6 +704,19 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                  Especialización / Servicios del Taller:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Inyección Electrónica, Frenos ABS, Motores Diésel, Cajas Automáticas..."
+                  value={newMecEspecialidad}
+                  onChange={(e) => setNewMecEspecialidad(e.target.value)}
+                  className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none"
+                />
+              </div>
+
               {formMecError && (
                 <div className="p-2 bg-red-950/20 border border-red-900/30 text-red-400 text-[10px] rounded-lg">
                   {formMecError}
@@ -764,6 +783,63 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
                           <span className="text-emerald-400">👍 {mec.totalPositivas || 0}</span>
                           <span className="text-red-400">👎 {mec.totalNegativas || 0}</span>
                         </div>
+                      </div>
+
+                      {/* Especialización y Servicios Técnicos */}
+                      <div className="bg-slate-950/70 p-2.5 rounded-xl border border-white/5 space-y-1.5 mt-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-mono text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-400 shrink-0" /> Especialización y Servicios:
+                          </span>
+                          {editingMecEspCode !== mec.codigoMecanico ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingMecEspCode(mec.codigoMecanico);
+                                setEditingMecEspValue(mec.especialidad || "");
+                              }}
+                              className="text-[9px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                            >
+                              Editar ✏️
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setEditingMecEspCode(null)}
+                              className="text-[9px] text-slate-400 hover:text-white font-bold cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
+
+                        {editingMecEspCode !== mec.codigoMecanico ? (
+                          <p className="text-[10.5px] text-slate-300 leading-relaxed font-sans">
+                            {mec.especialidad || "Mecánica general, diagnóstico y mantenimiento preventivo multimarcas."}
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5 pt-1">
+                            <input
+                              type="text"
+                              value={editingMecEspValue}
+                              onChange={(e) => setEditingMecEspValue(e.target.value)}
+                              placeholder="Ej: Inyección Electrónica, Frenos ABS, Cajas Automáticas..."
+                              className="w-full glass-input rounded-lg px-2.5 py-1 text-xs text-white"
+                            />
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await ejecutarUpdate("actualizarEspecialidadMecanico", mec.codigoMecanico, editingMecEspValue.trim(), { especialidad: editingMecEspValue.trim() });
+                                  setEditingMecEspCode(null);
+                                }}
+                                className="text-[9px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 px-2.5 py-1 rounded-lg cursor-pointer shadow"
+                              >
+                                Guardar Especialización
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
