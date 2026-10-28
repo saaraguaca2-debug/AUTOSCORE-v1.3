@@ -2841,7 +2841,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
       {/* ---------------- MODAL DIRECTORIO PÚBLICO DE CALIDAD TÉCNICA DE TALLERES ---------------- */}
       {showDirectorioTalleres && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-fade-in no-print">
-          <div className="bg-[#0b0c10] border border-amber-500/40 rounded-3xl p-3.5 sm:p-5 w-full max-w-4xl h-[92vh] max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden gap-3">
+          <div className="bg-[#0b0c10] border border-amber-500/40 rounded-3xl p-3.5 sm:p-5 w-full max-w-3xl h-[92vh] max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden gap-3">
             
             {/* Cabecera Directorio Compacta y Elegante */}
             <div className="flex items-center justify-between border-b border-white/10 pb-2.5 shrink-0">
@@ -2958,7 +2958,7 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
                 }
 
                 return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-3">
                     {lista.map((mec: any, idx: number) => {
                       const pct = mec.porcentajeCalidad != null ? Number(mec.porcentajeCalidad) : 100;
                       const pos = Number(mec.totalPositivas || 0);
