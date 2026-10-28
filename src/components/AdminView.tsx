@@ -9,6 +9,7 @@ import {
   getScoreConfig, saveScoreConfig, DEFAULT_SCORE_CONFIG, ScoreConfig,
   notifyDataChanged
 } from "../mockData";
+import { formatWhatsAppNumber } from "../utils";
 
 interface AdminViewProps {
   appScriptUrl: string;
@@ -49,6 +50,8 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
   // Tab seleccionada
   const [activeAdminTab, setActiveAdminTab] = useState<"dashboard" | "usuarios" | "vehiculos" | "mecanicos" | "ajustes">("dashboard");
   const [filtroUsuario, setFiltroUsuario] = useState<"todos" | "pendientes" | "aprobados">("todos");
+  const [filtroMecanico, setFiltroMecanico] = useState<"todos" | "pendientes" | "activos" | "suspendidos">("todos");
+  const [loginPendingTalleresCount, setLoginPendingTalleresCount] = useState(0);
 
   // Consultar solicitudes pendientes antes de loguear
   useEffect(() => {
@@ -56,9 +59,15 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
       fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
         .then(res => res.json())
         .then(data => {
-          if (data && data.success && Array.isArray(data.usuarios)) {
-            const count = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
-            setLoginPendingCount(count);
+          if (data && data.success) {
+            if (Array.isArray(data.usuarios)) {
+              const count = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+              setLoginPendingCount(count);
+            }
+            if (Array.isArray(data.mecanicos)) {
+              const countTalleres = data.mecanicos.filter((m: any) => m.estado === "Pendiente").length;
+              setLoginPendingTalleresCount(countTalleres);
+            }
           }
         })
         .catch(() => {});
@@ -100,9 +109,13 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
         setMecanicos(json.mecanicos || []);
         setHistorial(json.historial || []);
         const pending = uList.filter((u: any) => u.estadoUsuario === "Pendiente").length;
+        const pendingTalleres = (json.mecanicos || []).filter((m: any) => m.estado === "Pendiente").length;
         if (pending > 0) {
           setActiveAdminTab("usuarios");
           setFiltroUsuario("pendientes");
+        } else if (pendingTalleres > 0) {
+          setActiveAdminTab("mecanicos");
+          setFiltroMecanico("pendientes");
         }
       } else {
         throw new Error(json.error || "Fallo en la respuesta de la Base de Datos.");
@@ -193,6 +206,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
 
   if (!isAuthorized) {
     const pendingCount = loginPendingCount;
+    const pendingTalleresCount = loginPendingTalleresCount;
 
     return (
       <div className="w-full max-w-md mx-auto px-4 py-12 flex flex-col items-center animate-fade-in">
@@ -208,7 +222,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
         </p>
 
         {pendingCount > 0 && (
-          <div className="w-full bg-red-950/40 border border-red-500/40 p-3.5 rounded-2xl flex items-center justify-between text-xs text-red-200 mb-4 shadow-lg shadow-red-950/30">
+          <div className="w-full bg-red-950/40 border border-red-500/40 p-3.5 rounded-2xl flex items-center justify-between text-xs text-red-200 mb-3 shadow-lg shadow-red-950/30">
             <div className="flex items-center gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping shrink-0" />
               <div>
@@ -222,6 +236,25 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
             </div>
             <span className="text-[9px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30 px-2 py-0.5 rounded-full uppercase">
               Por Aprobar
+            </span>
+          </div>
+        )}
+
+        {pendingTalleresCount > 0 && (
+          <div className="w-full bg-amber-950/40 border border-amber-500/40 p-3.5 rounded-2xl flex items-center justify-between text-xs text-amber-200 mb-4 shadow-lg shadow-amber-950/30">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <div>
+                <span className="font-bold text-white block">
+                  {pendingTalleresCount} {pendingTalleresCount === 1 ? "afiliación de taller pendiente" : "afiliaciones de talleres pendientes"}
+                </span>
+                <span className="text-[10px] text-amber-300/80">
+                  Talleres mecánicos esperando revisión y aprobación técnica
+                </span>
+              </div>
+            </div>
+            <span className="text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase">
+              Por Revisar
             </span>
           </div>
         )}
@@ -270,6 +303,8 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
   const vehiculosActivos = vehiculos.filter(v => v.estadoCertificado === "Activo").length;
   const vehiculosVencidos = vehiculos.filter(v => v.estadoCertificado === "Vencido").length;
   const talleresSuspendidos = mecanicos.filter(m => m.estado === "Suspendido").length;
+  const talleresPendientes = mecanicos.filter(m => m.estado === "Pendiente").length;
+  const talleresActivos = mecanicos.filter(m => m.estado === "Activo").length;
 
   return (
     <div className="w-full max-w-md mx-auto px-4 py-6 flex flex-col space-y-5 animate-fade-in">
@@ -316,7 +351,7 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
         >
           Dueños
           {usuariosPendientes > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white font-mono text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white font-mono text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
               {usuariosPendientes}
             </span>
           )}
@@ -331,11 +366,16 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
         </button>
         <button
           onClick={() => setActiveAdminTab("mecanicos")}
-          className={`py-2 text-[10px] font-bold rounded-lg transition-colors ${
+          className={`py-2 text-[10px] font-bold rounded-lg transition-colors relative ${
             activeAdminTab === "mecanicos" ? "bg-amber-500 text-slate-950" : "text-slate-400 hover:text-slate-200"
           }`}
         >
           Talleres
+          {talleresPendientes > 0 && (
+            <span className="absolute -top-1 -right-1 bg-amber-500 text-slate-950 font-mono text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse">
+              {talleresPendientes}
+            </span>
+          )}
         </button>
         <button
           onClick={() => setActiveAdminTab("ajustes")}
@@ -393,12 +433,29 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
               </div>
             </div>
 
-            <div className="bg-slate-900/40 border border-white/5 p-4 rounded-2xl flex flex-col justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Técnicos</span>
+            <div 
+              onClick={() => {
+                setActiveAdminTab("mecanicos");
+                if (talleresPendientes > 0) setFiltroMecanico("pendientes");
+              }}
+              className="bg-slate-900/40 border border-white/5 hover:border-amber-500/30 p-4 rounded-2xl flex flex-col justify-between cursor-pointer transition-colors"
+              title="Click para ver lista de talleres y solicitudes de afiliación"
+            >
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Talleres</span>
+                <span className="text-[9px] text-amber-500 font-bold hover:underline">Ver →</span>
+              </div>
               <div className="flex justify-between items-baseline mt-2">
                 <span className="text-2xl font-mono font-extrabold text-white">{mecanicos.length}</span>
-                {talleresSuspendidos > 0 && (
-                  <span className="text-[9px] text-red-400 font-medium">{talleresSuspendidos} Susp.</span>
+                {talleresPendientes > 0 ? (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                    {talleresPendientes} Pend.
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                    {talleresActivos} Act.
+                  </span>
                 )}
               </div>
             </div>
@@ -740,136 +797,283 @@ export default function AdminView({ appScriptUrl }: AdminViewProps) {
             </form>
           </div>
 
-          {/* Listado de Talleres */}
-          <div className="space-y-2">
-            <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">
-              Técnicos Autorizados
-            </h5>
+          {/* Listado y Aprobación de Talleres */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                Red Oficial de Talleres
+              </h5>
+              {talleresPendientes > 0 && (
+                <span className="text-[9.5px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse">
+                  <span>⏳</span> {talleresPendientes} {talleresPendientes === 1 ? "afiliación pendiente" : "afiliaciones pendientes"}
+                </span>
+              )}
+            </div>
 
-            <div className="space-y-2.5 max-h-[220px] overflow-y-auto">
-              {mecanicos.map((mec, idx) => (
-                <div key={idx} className="bg-slate-900/40 border border-white/5 p-3 rounded-2xl space-y-2">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-1.5">
-                        <Wrench className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span className="text-xs font-extrabold text-white">{mec.taller || "Taller Autorizado"}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <User className="w-3 h-3 text-emerald-400 shrink-0" />
-                        <span className="text-[11px] text-slate-400 font-medium">Mecánico:</span>
-                        <span className="text-[11px] font-bold text-slate-200">{mec.nombre}</span>
-                      </div>
-                      <span className="text-[10px] text-amber-500 font-mono block">Código: {mec.codigoMecanico}</span>
-                      {mec.telefono && (
-                        <span className="text-[10px] text-slate-400 font-mono block flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          <span>+{mec.telefono}</span>
-                        </span>
-                      )}
-                      {/* Calidad Técnica Oficial */}
-                      <div className="flex items-center gap-2 pt-1">
-                        <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
-                          (mec.porcentajeCalidad || 100) >= 90
+            {/* Barra de Filtros de Estado */}
+            <div className="grid grid-cols-4 gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[9.5px]">
+              <button
+                type="button"
+                onClick={() => setFiltroMecanico("todos")}
+                className={`py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  filtroMecanico === "todos" ? "bg-amber-500 text-slate-950 font-black shadow" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Todos ({mecanicos.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroMecanico("pendientes")}
+                className={`py-1.5 rounded-lg font-bold transition-all relative cursor-pointer ${
+                  filtroMecanico === "pendientes" ? "bg-amber-500 text-slate-950 font-black shadow" : "text-amber-400 hover:text-amber-300"
+                }`}
+              >
+                Pend. ({talleresPendientes})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroMecanico("activos")}
+                className={`py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  filtroMecanico === "activos" ? "bg-emerald-500 text-slate-950 font-black shadow" : "text-emerald-400 hover:text-emerald-300"
+                }`}
+              >
+                Act. ({talleresActivos})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroMecanico("suspendidos")}
+                className={`py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  filtroMecanico === "suspendidos" ? "bg-red-500 text-white font-black shadow" : "text-red-400 hover:text-red-300"
+                }`}
+              >
+                Susp. ({talleresSuspendidos})
+              </button>
+            </div>
+
+            {/* Listado con scroll */}
+            <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+              {(() => {
+                const lista = mecanicos.filter(mec => {
+                  if (filtroMecanico === "pendientes") return mec.estado === "Pendiente";
+                  if (filtroMecanico === "activos") return mec.estado === "Activo";
+                  if (filtroMecanico === "suspendidos") return mec.estado === "Suspendido";
+                  return true;
+                });
+
+                if (lista.length === 0) {
+                  return (
+                    <div className="p-6 bg-slate-900/30 border border-white/5 rounded-2xl text-center space-y-1">
+                      <p className="text-xs text-slate-400 font-bold">
+                        {filtroMecanico === "pendientes"
+                          ? "No hay solicitudes de afiliación de talleres pendientes de revisión."
+                          : "No se encontraron talleres con este filtro."}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {filtroMecanico === "pendientes"
+                          ? "Los talleres pueden postularse desde la sección de mecánicos en la app."
+                          : "Selecciona otra pestaña para ver más talleres."}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return lista.map((mec, idx) => {
+                  const esPendiente = mec.estado === "Pendiente";
+                  const esSuspendido = mec.estado === "Suspendido";
+
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`p-3.5 rounded-2xl space-y-2.5 transition-all ${
+                        esPendiente
+                          ? "bg-amber-500/10 border-2 border-amber-500/40 shadow-lg shadow-amber-950/20"
+                          : esSuspendido
+                          ? "bg-red-950/20 border border-red-900/30"
+                          : "bg-slate-900/40 border border-white/5"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <Wrench className={`w-3.5 h-3.5 shrink-0 ${esPendiente ? "text-amber-400" : "text-amber-500"}`} />
+                            <span className="text-xs font-extrabold text-white truncate">{mec.taller || "Taller Autorizado"}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            <User className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span className="text-[11px] text-slate-400 font-medium">Mecánico:</span>
+                            <span className="text-[11px] font-bold text-slate-200">{mec.nombre}</span>
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            <span className="text-[10px] text-amber-500 font-mono font-bold">
+                              Código: {mec.codigoMecanico}
+                            </span>
+                            {mec.telefono && (
+                              <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                                <Phone className="w-3 h-3" />
+                                <span>+{mec.telefono}</span>
+                              </span>
+                            )}
+                            {mec.ubicacion && (
+                              <span className="text-[10px] text-slate-400 flex items-center gap-1">
+                                <span>📍</span>
+                                <span>{mec.ubicacion}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Calidad Técnica Oficial (si está activo o tiene calificaciones) */}
+                          {!esPendiente && (
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                                (mec.porcentajeCalidad || 100) >= 90
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : (mec.porcentajeCalidad || 100) >= 75
+                                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+                              }`}>
+                                <Star className="w-2.5 h-2.5 fill-current" />
+                                <span>{mec.porcentajeCalidad || 100}% Calidad Técnica</span>
+                              </span>
+                              <div className="flex items-center gap-1.5 font-mono text-[9px]">
+                                <span className="text-emerald-400">👍 {mec.totalPositivas || 0}</span>
+                                <span className="text-red-400">👎 {mec.totalNegativas || 0}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Especialización y Servicios Técnicos */}
+                          <div className="bg-slate-950/70 p-2.5 rounded-xl border border-white/5 space-y-1.5 mt-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-mono text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                                <Sparkles className="w-3 h-3 text-amber-400 shrink-0" /> Especialización y Servicios:
+                              </span>
+                              {editingMecEspCode !== mec.codigoMecanico ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMecEspCode(mec.codigoMecanico);
+                                    setEditingMecEspValue(mec.especialidad || "");
+                                  }}
+                                  className="text-[9px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                                >
+                                  Editar ✏️
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingMecEspCode(null)}
+                                  className="text-[9px] text-slate-400 hover:text-white font-bold cursor-pointer"
+                                >
+                                  Cancelar
+                                </button>
+                              )}
+                            </div>
+
+                            {editingMecEspCode !== mec.codigoMecanico ? (
+                              <p className="text-[10.5px] text-slate-300 leading-relaxed font-sans">
+                                {mec.especialidad || "Mecánica general, diagnóstico y mantenimiento preventivo multimarcas."}
+                              </p>
+                            ) : (
+                              <div className="space-y-1.5 pt-1">
+                                <input
+                                  type="text"
+                                  value={editingMecEspValue}
+                                  onChange={(e) => setEditingMecEspValue(e.target.value)}
+                                  placeholder="Ej: Inyección Electrónica, Frenos ABS, Cajas Automáticas..."
+                                  className="w-full glass-input rounded-lg px-2.5 py-1 text-xs text-white"
+                                />
+                                <div className="flex justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      await ejecutarUpdate("actualizarEspecialidadMecanico", mec.codigoMecanico, editingMecEspValue.trim(), { especialidad: editingMecEspValue.trim() });
+                                      setEditingMecEspCode(null);
+                                    }}
+                                    className="text-[9px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 px-2.5 py-1 rounded-lg cursor-pointer shadow"
+                                  >
+                                    Guardar Especialización
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Badge de Estado */}
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                          esPendiente
+                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
+                            : mec.estado === "Activo"
                             ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                            : (mec.porcentajeCalidad || 100) >= 75
-                            ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
                             : "bg-red-500/10 text-red-400 border border-red-500/20"
                         }`}>
-                          <Star className="w-2.5 h-2.5 fill-current" />
-                          <span>{mec.porcentajeCalidad || 100}% Calidad Técnica</span>
+                          {esPendiente ? "⏳ Pendiente" : mec.estado}
                         </span>
-                        <div className="flex items-center gap-1.5 font-mono text-[9px]">
-                          <span className="text-emerald-400">👍 {mec.totalPositivas || 0}</span>
-                          <span className="text-red-400">👎 {mec.totalNegativas || 0}</span>
-                        </div>
                       </div>
 
-                      {/* Especialización y Servicios Técnicos */}
-                      <div className="bg-slate-950/70 p-2.5 rounded-xl border border-white/5 space-y-1.5 mt-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-mono text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-amber-400 shrink-0" /> Especialización y Servicios:
-                          </span>
-                          {editingMecEspCode !== mec.codigoMecanico ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingMecEspCode(mec.codigoMecanico);
-                                setEditingMecEspValue(mec.especialidad || "");
-                              }}
-                              className="text-[9px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
-                            >
-                              Editar ✏️
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setEditingMecEspCode(null)}
-                              className="text-[9px] text-slate-400 hover:text-white font-bold cursor-pointer"
-                            >
-                              Cancelar
-                            </button>
-                          )}
-                        </div>
+                      {/* Botones de Acción y Aprobación */}
+                      <div className="flex flex-wrap gap-2 pt-2 border-t border-white/5 justify-end items-center">
+                        {esPendiente ? (
+                          <>
+                            {mec.telefono && (
+                              <a
+                                href={`https://wa.me/${formatWhatsAppNumber(mec.telefono)}?text=${encodeURIComponent(
+                                  `¡Hola ${mec.nombre || "Técnico"}! Te informamos que la solicitud de afiliación de tu taller "${mec.taller}" ha sido APROBADA en la Red Oficial AutoScore.\n\nTu código oficial de acceso es: ${mec.codigoMecanico}\n\nYa puedes ingresar a la plataforma y sellar inspecciones y mantenimientos con validez oficial.`
+                                )}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[9.5px] font-black bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 px-2.5 py-1.5 rounded-lg flex items-center gap-1 shadow cursor-pointer transition-all active:scale-95"
+                                title="Notificar por WhatsApp aprobación oficial"
+                              >
+                                <Phone className="w-3 h-3 fill-current" />
+                                <span>Avisar Aprobación</span>
+                              </a>
+                            )}
 
-                        {editingMecEspCode !== mec.codigoMecanico ? (
-                          <p className="text-[10.5px] text-slate-300 leading-relaxed font-sans">
-                            {mec.especialidad || "Mecánica general, diagnóstico y mantenimiento preventivo multimarcas."}
-                          </p>
+                            <button
+                              type="button"
+                              onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Activo")}
+                              className="text-[10px] font-black bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-lg shadow-lg shadow-emerald-500/20 flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Aprobar Afiliación ✅</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Suspendido")}
+                              className="text-[9.5px] font-bold bg-red-950/30 hover:bg-red-950/50 text-red-400 border border-red-900/40 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
+                            >
+                              Rechazar ❌
+                            </button>
+                          </>
                         ) : (
-                          <div className="space-y-1.5 pt-1">
-                            <input
-                              type="text"
-                              value={editingMecEspValue}
-                              onChange={(e) => setEditingMecEspValue(e.target.value)}
-                              placeholder="Ej: Inyección Electrónica, Frenos ABS, Cajas Automáticas..."
-                              className="w-full glass-input rounded-lg px-2.5 py-1 text-xs text-white"
-                            />
-                            <div className="flex justify-end gap-1.5">
+                          <>
+                            {mec.estado !== "Activo" ? (
                               <button
                                 type="button"
-                                onClick={async () => {
-                                  await ejecutarUpdate("actualizarEspecialidadMecanico", mec.codigoMecanico, editingMecEspValue.trim(), { especialidad: editingMecEspValue.trim() });
-                                  setEditingMecEspCode(null);
-                                }}
-                                className="text-[9px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 px-2.5 py-1 rounded-lg cursor-pointer shadow"
+                                onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Activo")}
+                                className="text-[9.5px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-2.5 py-1 rounded-lg cursor-pointer"
                               >
-                                Guardar Especialización
+                                Habilitar Cuenta ✅
                               </button>
-                            </div>
-                          </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Suspendido")}
+                                className="text-[9.5px] font-bold bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 px-2.5 py-1 rounded-lg cursor-pointer"
+                              >
+                                Suspender Cuenta ❌
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                      mec.estado === "Activo"
-                        ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                        : "bg-red-500/10 text-red-400 border border-red-500/20"
-                    }`}>
-                      {mec.estado}
-                    </span>
-                  </div>
-
-                  <div className="flex gap-2 pt-1 border-t border-white/5 justify-end">
-                    {mec.estado !== "Activo" ? (
-                      <button
-                        onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Activo")}
-                        className="text-[9px] font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-2 py-0.5 rounded"
-                      >
-                        Habilitar
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => ejecutarUpdate("actualizarMecanico", mec.codigoMecanico, "Suspendido")}
-                        className="text-[9px] font-bold bg-red-950/20 hover:bg-red-950/40 text-red-400 border border-red-900/30 px-2 py-0.5 rounded"
-                      >
-                        Suspender Cuenta ❌
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>

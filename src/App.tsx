@@ -97,9 +97,14 @@ export default function App() {
         fetch(`${appScriptUrl}?accion=adminData`, { mode: "cors" })
           .then(res => res.json())
           .then(data => {
-            if (data && data.success && Array.isArray(data.usuarios)) {
-              const liveCount = data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length;
-              setSolicitudesCount(liveCount);
+            if (data && data.success) {
+              const liveUsers = Array.isArray(data.usuarios)
+                ? data.usuarios.filter((u: any) => u.estadoUsuario === "Pendiente").length
+                : 0;
+              const liveTalleres = Array.isArray(data.mecanicos)
+                ? data.mecanicos.filter((m: any) => m.estado === "Pendiente").length
+                : 0;
+              setSolicitudesCount(liveUsers + liveTalleres);
             } else {
               setSolicitudesCount(0);
             }

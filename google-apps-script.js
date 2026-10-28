@@ -717,6 +717,68 @@ function doPost(e) {
         data: { idDueno: idDueno, nombre: nombre, estadoUsuario: "Pendiente" }
       });
     }
+
+    // ACCIÓN: Solicitud de Afiliación de Taller Automotriz (Inicia en "Pendiente" de Aprobación)
+    if (accion === "solicitudAfiliacionTaller" || accion === "solicitarAfiliacion") {
+      const taller = (payload.taller || payload.nombreTaller || "").toString().trim();
+      const nombre = (payload.nombre || payload.responsable || "").toString().trim();
+      const telefono = (payload.telefono || payload.celular || "").toString().trim();
+      const especialidad = (payload.especialidad || payload.servicios || "").toString().trim();
+      const ubicacion = (payload.ubicacion || payload.ciudad || "").toString().trim();
+      let codigoDeseado = (payload.codigoMecanico || payload.codigo || "").toString().trim().toUpperCase();
+
+      if (!taller || !nombre || !telefono) {
+        return getCorsResponse({ success: false, error: "Debe rellenar Nombre del Taller, Nombre del Responsable y Teléfono de contacto." });
+      }
+
+      const sheetMec = sheetApp.getSheetByName("Mecanicos");
+      if (!sheetMec) return getCorsResponse({ success: false, error: "Pestaña 'Mecanicos' no encontrada." });
+
+      const d = sheetMec.getDataRange().getValues();
+      const h = d[0];
+      const idxCod = findColumnIndex(h, "CodigoMecanico");
+
+      // Si no proporcionó código, generar uno automático único (ej: T101, T450...)
+      if (!codigoDeseado) {
+        const numRand = Math.floor(100 + Math.random() * 900);
+        const iniciales = taller.replace(/[^A-Za-z]/g, "").substring(0, 3).toUpperCase() || "TAL";
+        codigoDeseado = iniciales + numRand;
+      }
+
+      // Validar si el código ya existe
+      if (idxCod !== -1) {
+        for (let i = 1; i < d.length; i++) {
+          if (d[i][idxCod].toString().trim().toUpperCase() === codigoDeseado) {
+            return getCorsResponse({ success: false, error: "El código '" + codigoDeseado + "' ya existe en el sistema. Por favor elija otro código de acceso o déjelo vacío para asignación automática." });
+          }
+        }
+      }
+
+      // Asegurar columnas requeridas
+      ensureColumnHeader(sheetMec, "Especialidad");
+
+      const descCompleta = ubicacion ? (especialidad ? (especialidad + " | Ubicación: " + ubicacion) : ("Ubicación: " + ubicacion)) : especialidad;
+
+      sheetMec.appendRow([
+        codigoDeseado,
+        nombre,
+        taller,
+        "Pendiente", // Estado inicial: Pendiente de revisión y aprobación administrativa
+        telefono,
+        descCompleta
+      ]);
+
+      return getCorsResponse({
+        success: true,
+        message: "¡Solicitud de afiliación enviada con éxito! Tu taller ha quedado registrado en estado PENDIENTE DE REVISIÓN. El Administrador validará los datos para habilitar tu acceso.",
+        data: {
+          codigoMecanico: codigoDeseado,
+          taller: taller,
+          nombre: nombre,
+          estado: "Pendiente"
+        }
+      });
+    }
     
     // ACCIÓN 2: Registrar un nuevo Vehículo (Se ejecuta desde la Homologación / Inspección)
     if (accion === "registrarVehiculo") {
@@ -829,6 +891,12 @@ function doPost(e) {
         return getCorsResponse({
           success: false,
           error: "ACCESO DENEGADO: Tu taller o cuenta de mecánico se encuentra SUSPENDIDA. Regulariza tu membresía de AutoScore con el Administrador."
+        });
+      }
+      if (mecanico.estado.toLowerCase() === "pendiente") {
+        return getCorsResponse({
+          success: false,
+          error: "SOLICITUD EN REVISIÓN: Tu taller está en proceso de revisión técnica por el Administrador. Podrás operar una vez aprobada tu afiliación."
         });
       }
       
@@ -967,6 +1035,12 @@ function doPost(e) {
           error: "ACCESO DENEGADO: Tu taller o cuenta de mecánico se encuentra SUSPENDIDA. Regulariza tu membresía de AutoScore con el Administrador."
         });
       }
+      if (mecanico.estado.toLowerCase() === "pendiente") {
+        return getCorsResponse({
+          success: false,
+          error: "SOLICITUD EN REVISIÓN: Tu taller está en proceso de revisión técnica por el Administrador. Podrás operar una vez aprobada tu afiliación."
+        });
+      }
 
       // Registrar o actualizar vehículo en 'Vehiculos'
       const sheetVehiculos = sheetApp.getSheetByName("Vehiculos");
@@ -1100,6 +1174,12 @@ function doPost(e) {
         return getCorsResponse({
           success: false,
           error: "ACCESO DENEGADO: Tu taller o cuenta de mecánico se encuentra SUSPENDIDA. Regulariza tu membresía de AutoScore con el Administrador."
+        });
+      }
+      if (mecanico.estado.toLowerCase() === "pendiente") {
+        return getCorsResponse({
+          success: false,
+          error: "SOLICITUD EN REVISIÓN: Tu taller está en proceso de revisión técnica por el Administrador. Podrás operar una vez aprobada tu afiliación."
         });
       }
       

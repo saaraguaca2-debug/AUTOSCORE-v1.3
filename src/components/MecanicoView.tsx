@@ -3,7 +3,8 @@ import jsQR from "jsqr";
 import { 
   PenTool, Shield, QrCode, AlertCircle, RefreshCw, Key, Camera, Gauge, CheckCircle2,
   Lock, ArrowRight, CornerDownLeft, Sparkles, AlertTriangle, MonitorPlay, Check, PlusCircle,
-  ClipboardCheck, Wrench, User, History, Star, ThumbsUp, ThumbsDown, MessageSquare
+  ClipboardCheck, Wrench, User, History, Star, ThumbsUp, ThumbsDown, MessageSquare,
+  Building2, Send, Clock, Phone, MapPin
 } from "lucide-react";
 import { Mecanico, Vehiculo } from "../types";
 import { notifyDataChanged } from "../mockData";
@@ -19,6 +20,20 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   const [loggedMecanico, setLoggedMecanico] = useState<Mecanico | null>(null);
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Modo de ingreso: "login" (con código) o "afiliacion" (solicitud de nuevo taller)
+  const [modoIngreso, setModoIngreso] = useState<"login" | "afiliacion">("login");
+
+  // Estados del Formulario de Solicitud de Afiliación de Taller
+  const [afiliacionTaller, setAfiliacionTaller] = useState("");
+  const [afiliacionResponsable, setAfiliacionResponsable] = useState("");
+  const [afiliacionTelefono, setAfiliacionTelefono] = useState("");
+  const [afiliacionCiudad, setAfiliacionCiudad] = useState("");
+  const [afiliacionEspecialidad, setAfiliacionEspecialidad] = useState("");
+  const [afiliacionCodigoDeseado, setAfiliacionCodigoDeseado] = useState("");
+  const [isSubmittingAfiliacion, setIsSubmittingAfiliacion] = useState(false);
+  const [afiliacionError, setAfiliacionError] = useState<string | null>(null);
+  const [afiliacionSuccess, setAfiliacionSuccess] = useState<any | null>(null);
 
   // Selector de sección del panel mecánico logueado
   const [activeTab, setActiveTab] = useState<"mantenimiento" | "inspeccion" | "reputacion">("mantenimiento");
@@ -330,6 +345,10 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
           setLoginError(
             `ACCESO DENEGADO: La membresía del taller ${foundMec.taller || "Afiliado"} (${foundMec.nombre || "Técnico"}) está SUSPENDIDA por falta de pago. Regularice el estado de cuenta para operar.`
           );
+        } else if (foundMec.estado === "Pendiente") {
+          setLoginError(
+            `SOLICITUD EN REVISIÓN: La afiliación de tu taller "${foundMec.taller || "Taller Solicitante"}" está actualmente PENDIENTE de revisión y aprobación por el Administrador de AutoScore. Podrás ingresar a sellar inspecciones y mantenimientos oficiales una vez sea aprobada.`
+          );
         } else {
           setLoggedMecanico(foundMec);
           setLoginError(null);
@@ -342,6 +361,72 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
       setLoginError(err.message || "Error al verificar código en la base de datos.");
     } finally {
       setLoadingLogin(false);
+    }
+  };
+
+  // Enviar Solicitud de Afiliación de Taller a la Base de Datos
+  const handleEnviarAfiliacion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAfiliacionError(null);
+    setAfiliacionSuccess(null);
+
+    const cleanTaller = afiliacionTaller.trim();
+    const cleanNombre = afiliacionResponsable.trim();
+    const cleanTel = afiliacionTelefono.trim().replace(/[^0-9]/g, "");
+
+    if (!cleanTaller || !cleanNombre || !cleanTel) {
+      setAfiliacionError("Por favor completa el Nombre del Taller, Mecánico Responsable y Teléfono de contacto.");
+      return;
+    }
+
+    if (!appScriptUrl) {
+      setAfiliacionError("Configura la URL de la Base de Datos en el botón de ajustes (⚙️) para enviar la solicitud.");
+      return;
+    }
+
+    setIsSubmittingAfiliacion(true);
+    try {
+      const payload = {
+        accion: "solicitudAfiliacionTaller",
+        taller: cleanTaller,
+        nombre: cleanNombre,
+        telefono: cleanTel,
+        ubicacion: afiliacionCiudad.trim(),
+        especialidad: afiliacionEspecialidad.trim(),
+        codigoMecanico: afiliacionCodigoDeseado.trim().toUpperCase()
+      };
+
+      const res = await fetch(appScriptUrl, {
+        method: "POST",
+        mode: "cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error("Fallo en la comunicación con la Base de Datos.");
+      const json = await res.json();
+
+      if (json && json.success) {
+        setAfiliacionSuccess(json.data || {
+          taller: cleanTaller,
+          nombre: cleanNombre,
+          codigoMecanico: json.codigoMecanico || afiliacionCodigoDeseado.trim().toUpperCase() || "PENDIENTE",
+          telefono: cleanTel
+        });
+        setAfiliacionTaller("");
+        setAfiliacionResponsable("");
+        setAfiliacionTelefono("");
+        setAfiliacionCiudad("");
+        setAfiliacionEspecialidad("");
+        setAfiliacionCodigoDeseado("");
+        notifyDataChanged();
+      } else {
+        setAfiliacionError(json.error || "No se pudo registrar la solicitud de afiliación.");
+      }
+    } catch (err: any) {
+      setAfiliacionError(err.message || "Error al enviar la solicitud de afiliación.");
+    } finally {
+      setIsSubmittingAfiliacion(false);
     }
   };
 
@@ -566,62 +651,321 @@ export default function MecanicoView({ appScriptUrl }: MecanicoViewProps) {
   return (
     <div className="w-full max-w-md mx-auto px-4 py-6 animate-fade-in text-slate-100">
       
-      {/* ---------------- VISTA 1: INGRESO DE ACCESO MECÁNICO ---------------- */}
+      {/* ---------------- VISTA 1: INGRESO DE ACCESO MECÁNICO / SOLICITUD DE AFILIACIÓN ---------------- */}
       {!loggedMecanico && (
-        <div className="glass-panel p-6 shadow-xl">
-          <div className="text-center mb-6">
-            <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-500 mb-3 border border-amber-500/20">
-              <Key className="w-6 h-6" />
-            </div>
-            <h2 className="text-xl font-display font-extrabold text-white">Panel de Carga Técnica</h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Ingresa tu código de acreditación para habilitar el escáner y registrar firmas de mantenimiento en la base de datos de AutoScore.
-            </p>
+        <div className="glass-panel p-6 shadow-xl space-y-5">
+          
+          {/* Selector de Modo: Ingreso vs Solicitar Afiliación */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-white/5 gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                setModoIngreso("login");
+                setLoginError(null);
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                modoIngreso === "login"
+                  ? "bg-amber-500 text-slate-950 font-black shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Key className="w-3.5 h-3.5" />
+              <span>Ingreso con Código</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setModoIngreso("afiliacion");
+                setAfiliacionError(null);
+                setAfiliacionSuccess(null);
+              }}
+              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                modoIngreso === "afiliacion"
+                  ? "bg-amber-500 text-slate-950 font-black shadow"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              <span>Solicitar Afiliación</span>
+            </button>
           </div>
 
-          <form onSubmit={handleMecanicoLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                Código de Taller Homologado:
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ej: Código de taller"
-                value={codigoMecanico}
-                onChange={(e) => setCodigoMecanico(e.target.value)}
-                className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-center text-amber-400 font-mono font-bold tracking-widest focus:outline-none focus:border-amber-500 placeholder-slate-500"
-              />
-              <div className="mt-2.5 p-3.5 bg-black/40 border border-white/5 rounded-xl space-y-1.5 text-[11px] text-slate-400 leading-normal">
-                <span className="font-bold text-slate-400 block mb-1">Códigos Demo de Prueba:</span>
-                <p>• <strong className="text-emerald-400 font-mono">M101</strong>: Carlos Mendoza (<strong className="text-slate-300">Activo</strong>)</p>
-                <p>• <strong className="text-red-400 font-mono">M202</strong>: José Rodríguez (<strong className="text-red-500">Suspendido - Prueba Filtro Membresía</strong>)</p>
+          {/* MODO A: INGRESO CON CÓDIGO */}
+          {modoIngreso === "login" && (
+            <div className="space-y-5 animate-in fade-in duration-200">
+              <div className="text-center">
+                <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-500 mb-2 border border-amber-500/20">
+                  <Key className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-display font-extrabold text-white">Panel de Carga Técnica</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Ingresa tu código de acreditación para habilitar el escáner y registrar firmas de mantenimiento en la base de datos de AutoScore.
+                </p>
+              </div>
+
+              <form onSubmit={handleMecanicoLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Código de Taller Homologado:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Código de taller"
+                    value={codigoMecanico}
+                    onChange={(e) => setCodigoMecanico(e.target.value)}
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-center text-amber-400 font-mono font-bold tracking-widest focus:outline-none focus:border-amber-500 placeholder-slate-500"
+                  />
+                  <div className="mt-2.5 p-3 bg-black/40 border border-white/5 rounded-xl space-y-1 text-[11px] text-slate-400 leading-normal">
+                    <span className="font-bold text-slate-400 block mb-1">Códigos Demo de Prueba:</span>
+                    <p>• <strong className="text-emerald-400 font-mono">M101</strong>: Carlos Mendoza (<strong className="text-slate-300">Activo</strong>)</p>
+                    <p>• <strong className="text-red-400 font-mono">M202</strong>: José Rodríguez (<strong className="text-red-500">Suspendido - Prueba Filtro Membresía</strong>)</p>
+                  </div>
+                </div>
+
+                {loginError && (
+                  <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-900/40 text-red-300 text-xs flex items-start gap-2.5 leading-relaxed">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-red-400" />
+                    <span>{loginError}</span>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loadingLogin}
+                  className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  id="btn-login-mecanico"
+                >
+                  {loadingLogin ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Key className="w-4 h-4" />
+                      Verificar Credencial
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Enlace para solicitar afiliación */}
+              <div className="text-center pt-2 border-t border-white/5">
+                <p className="text-[11px] text-slate-400">
+                  ¿Aún no formas parte de la red de talleres certificados?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModoIngreso("afiliacion");
+                      setAfiliacionError(null);
+                      setAfiliacionSuccess(null);
+                    }}
+                    className="text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
+                  >
+                    Postula tu taller aquí
+                  </button>
+                </p>
               </div>
             </div>
+          )}
 
-            {loginError && (
-              <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-900/40 text-red-400 text-xs flex items-start gap-2.5 leading-relaxed">
-                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-                <span>{loginError}</span>
+          {/* MODO B: FORMULARIO DE SOLICITUD DE AFILIACIÓN DE TALLER */}
+          {modoIngreso === "afiliacion" && (
+            <div className="space-y-4 animate-in fade-in duration-200">
+              <div className="text-center">
+                <div className="inline-flex p-3 rounded-2xl bg-amber-500/10 text-amber-500 mb-2 border border-amber-500/20">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-display font-extrabold text-white">Afiliación de Taller Automotriz</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Envía la solicitud de tu taller para revisión del Administrador. Una vez aprobada tu afiliación, podrás firmar inspecciones y mantenimientos con validez oficial.
+                </p>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loadingLogin}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2"
-              id="btn-login-mecanico"
-            >
-              {loadingLogin ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
+              {afiliacionSuccess ? (
+                <div className="p-4 rounded-2xl bg-emerald-950/25 border border-emerald-500/30 text-emerald-300 text-xs space-y-3 animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center gap-2 font-black text-sm text-white">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <span>¡Solicitud Enviada para Revisión!</span>
+                  </div>
+                  <p className="text-slate-300 leading-relaxed text-[11.5px]">
+                    Tu taller ha sido registrado en la base de datos con estado <strong className="text-amber-400 uppercase font-mono">«Pendiente de Aprobación»</strong>.
+                  </p>
+                  <div className="bg-slate-950/80 p-3 rounded-xl border border-white/5 font-mono text-[11px] space-y-1 text-slate-300">
+                    <p>• <span className="text-slate-400">Taller:</span> <strong className="text-white">{afiliacionSuccess.taller}</strong></p>
+                    <p>• <span className="text-slate-400">Responsable:</span> {afiliacionSuccess.nombre}</p>
+                    <p>• <span className="text-slate-400">Código de Acceso:</span> <strong className="text-amber-400">{afiliacionSuccess.codigoMecanico}</strong></p>
+                    <p>• <span className="text-slate-400">Estado:</span> <span className="text-amber-400 font-bold">⏳ Pendiente de Aprobación</span></p>
+                  </div>
+                  <p className="text-[10.5px] text-slate-400 leading-normal">
+                    El Administrador de AutoScore revisará tus datos técnicos para aprobar la afiliación. Guarda tu código para ingresar una vez aprobada.
+                  </p>
+
+                  <div className="pt-2 flex flex-col gap-2">
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(
+                        `Hola Administrador de AutoScore. Acabo de enviar la solicitud de afiliación para el taller "${afiliacionSuccess.taller}" (Responsable: ${afiliacionSuccess.nombre}, Tel: ${afiliacionSuccess.telefono}, Código Solicitado: ${afiliacionSuccess.codigoMecanico}). Agradezco su revisión técnica para la aprobación.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-[#25D366] hover:bg-[#20ba5a] text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-md"
+                    >
+                      <Phone className="w-3.5 h-3.5 fill-current" />
+                      <span>Notificar Solicitud por WhatsApp</span>
+                    </a>
+                    
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModoIngreso("login");
+                        setCodigoMecanico(afiliacionSuccess.codigoMecanico || "");
+                        setAfiliacionSuccess(null);
+                      }}
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs transition-colors"
+                    >
+                      Ir al Panel de Ingreso con Código
+                    </button>
+                  </div>
+                </div>
               ) : (
-                <>
-                  <Key className="w-4 h-4" />
-                  Verificar Credencial
-                </>
+                <form onSubmit={handleEnviarAfiliacion} className="space-y-3.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Nombre del Taller Automotriz *
+                    </label>
+                    <div className="relative">
+                      <Building2 className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: Taller Central Motors"
+                        value={afiliacionTaller}
+                        onChange={(e) => setAfiliacionTaller(e.target.value)}
+                        className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Mecánico Responsable *
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej: Carlos Silva"
+                          value={afiliacionResponsable}
+                          onChange={(e) => setAfiliacionResponsable(e.target.value)}
+                          className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Teléfono / WhatsApp *
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej: 584121234567"
+                          value={afiliacionTelefono}
+                          onChange={(e) => setAfiliacionTelefono(e.target.value)}
+                          className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white font-mono placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Ciudad / Ubicación
+                      </label>
+                      <div className="relative">
+                        <MapPin className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          placeholder="Ej: Caracas, La Florida"
+                          value={afiliacionCiudad}
+                          onChange={(e) => setAfiliacionCiudad(e.target.value)}
+                          className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                        Código Deseado (Opcional)
+                      </label>
+                      <div className="relative">
+                        <Key className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                        <input
+                          type="text"
+                          maxLength={10}
+                          placeholder="Ej: TCM01 (o automático)"
+                          value={afiliacionCodigoDeseado}
+                          onChange={(e) => setAfiliacionCodigoDeseado(e.target.value.toUpperCase())}
+                          className="w-full glass-input rounded-xl pl-9 pr-3 py-2 text-xs text-amber-400 font-mono font-bold placeholder:text-slate-500 focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Especialización y Servicios del Taller
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Ej: Diagnóstico computarizado, inyección electrónica, frenos ABS, motores a gasolina y diésel, transmisiones automáticas..."
+                      value={afiliacionEspecialidad}
+                      onChange={(e) => setAfiliacionEspecialidad(e.target.value)}
+                      className="w-full glass-input rounded-xl p-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+                    />
+                  </div>
+
+                  {afiliacionError && (
+                    <div className="p-3 rounded-xl bg-red-950/30 border border-red-900/40 text-red-300 text-xs flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                      <span>{afiliacionError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAfiliacion}
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-black py-3 px-4 rounded-xl text-xs transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-lg"
+                  >
+                    {isSubmittingAfiliacion ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-slate-950" />
+                        <span>Enviando solicitud de afiliación...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Enviar Solicitud para Revisión</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setModoIngreso("login")}
+                      className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                    >
+                      ← Ya tengo un código, ingresar
+                    </button>
+                  </div>
+                </form>
               )}
-            </button>
-          </form>
+            </div>
+          )}
         </div>
       )}
 

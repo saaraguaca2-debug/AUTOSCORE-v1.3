@@ -2,9 +2,11 @@ export interface Mecanico {
   codigoMecanico: string;
   nombre: string;
   taller: string;
-  estado: "Activo" | "Suspendido";
+  estado: "Activo" | "Suspendido" | "Pendiente";
   telefono?: string;
   especialidad?: string; // Breve descripción de servicios o especialización técnica
+  ubicacion?: string;
+  fechaSolicitud?: string;
   totalPositivas?: number;
   totalNegativas?: number;
   totalServicios?: number;

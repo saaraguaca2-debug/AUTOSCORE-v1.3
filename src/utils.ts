@@ -49,3 +49,38 @@ export function sanitizarComentarioYTexto(
 
   return limpio;
 }
+
+/**
+ * Formatea un número telefónico a formato internacional E.164 compatible con WhatsApp (wa.me)
+ */
+export function formatWhatsAppNumber(phone: string): string {
+  let cleaned = String(phone || "").replace(/[^0-9]/g, "");
+  if (!cleaned) return "";
+
+  // Si empieza con 0, quitarlo (ej: 04141234567 -> 4141234567)
+  if (cleaned.startsWith("0")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  // Si ya empieza con 58 y tiene 12 dígitos, es perfecto
+  if (cleaned.startsWith("58") && cleaned.length === 12) {
+    return cleaned;
+  }
+
+  // Autocompletar código de país de Venezuela (58) si no lo tiene y empieza con prefijos comunes
+  const prefijosComunes = ["414", "424", "412", "416", "426"];
+  const startsWithPrefijo = prefijosComunes.some(p => cleaned.startsWith(p));
+
+  if (startsWithPrefijo) {
+    if (cleaned.length === 10 || cleaned.length === 9) {
+      cleaned = "58" + cleaned;
+    }
+  }
+
+  // Si la longitud es 10 y no empieza con 58, anteponer 58
+  if (cleaned.length === 10 && !cleaned.startsWith("58")) {
+    cleaned = "58" + cleaned;
+  }
+
+  return cleaned;
+}
