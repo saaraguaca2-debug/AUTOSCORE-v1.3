@@ -161,6 +161,7 @@ body {
 
   /* Resetear lienzo del documento para fondo blanco puro e inicio inmediato en Página 1 */
   html, body, #root {
+    background-color: #ffffff !important;
     background: #ffffff !important;
     background-image: none !important;
     color: #0f172a !important;
@@ -198,30 +199,56 @@ body {
     transform: none !important;
   }
 
-  /* Encabezado Oficial exclusivo para impresión */
-  .print-only-header {
-    display: block !important;
-    border-bottom: 2px solid #0f172a !important;
-    padding-bottom: 10px !important;
-    margin-bottom: 12px !important;
+  /* REGLA MAESTRA DE IMPRESIÓN PARA NAVEGADORES MÓVILES (Android / iOS):
+     Forzar que TODOS los elementos de texto (span, p, div, h1-h6, td, th, strong, small, label, b, a)
+     en las tarjetas imprimibles tengan color oscuro sólido (#0f172a), anulando text-transparent o letras blancas */
+  .cert-printable-card,
+  .cert-printable-card *,
+  .cert-signatures-sheet,
+  .cert-signatures-sheet *,
+  .cert-data-box,
+  .cert-data-box *,
+  .cert-timeline-item,
+  .cert-timeline-item *,
+  .cert-workshop-box,
+  .cert-workshop-box *,
+  .cert-qr-container,
+  .cert-qr-container * {
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
+    text-shadow: none !important;
+    opacity: 1 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
-  /* Ocultar marcas de agua tenues o difusas en pantalla que manchan la impresión */
-  .watermark-digital,
-  .pointer-events-none.select-none {
-    display: none !important;
-  }
-
-  /* Tarjeta de Certificado Principal y de Firmas */
+  /* Anular fondos oscuros/gradientes y transparentar contenedores para papel blanco */
   .cert-printable-card,
   .cert-signatures-sheet,
   .glass-panel,
-  .glass-panel-vip {
-    background: #ffffff !important;
+  .glass-panel-vip,
+  .cert-data-box,
+  .cert-timeline-item,
+  .cert-workshop-box,
+  .cert-qr-container,
+  [class*="bg-black"],
+  [class*="bg-slate-"],
+  [class*="bg-[#"],
+  [class*="from-"],
+  [class*="to-"],
+  [class*="bg-gradient-"] {
+    background-color: transparent !important;
+    background: transparent !important;
     background-image: none !important;
-    border: 2px solid #0f172a !important;
-    color: #0f172a !important;
     box-shadow: none !important;
+  }
+
+  /* Borde contenedor oficial de las tarjetas en impresión */
+  .cert-printable-card,
+  .cert-signatures-sheet {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    border: 2px solid #0f172a !important;
     border-radius: 12px !important;
     padding: 14px 16px !important;
     margin: 0 0 12px 0 !important;
@@ -229,22 +256,115 @@ body {
     overflow: visible !important;
     display: block !important;
     width: 100% !important;
-    max-width: 100% !important;
   }
 
-  /* HOJA 1: Empieza obligatoriamente en Página 1 sin salto previo */
+  /* Cajas interiores de datos con fondo gris muy claro para contraste limpio */
+  .cert-data-box,
+  .cert-qr-container,
+  .cert-workshop-box,
+  .cert-timeline-item {
+    background-color: #f8fafc !important;
+    background: #f8fafc !important;
+    border: 1.5px solid #cbd5e1 !important;
+    border-radius: 8px !important;
+  }
+
+  /* EXCEPCIÓN 1: Placa del vehículo con fondo negro real y letras blancas brillantes en PDF */
+  .cert-printable-card .cert-placa-badge,
+  .cert-signatures-sheet .cert-placa-badge {
+    background-color: #0f172a !important;
+    background: #0f172a !important;
+    border: 2px solid #000000 !important;
+    border-radius: 6px !important;
+    padding: 3px 10px !important;
+    display: inline-block !important;
+  }
+  .cert-printable-card .cert-placa-badge,
+  .cert-printable-card .cert-placa-badge *,
+  .cert-signatures-sheet .cert-placa-badge,
+  .cert-signatures-sheet .cert-placa-badge * {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    font-weight: 900 !important;
+  }
+
+  /* EXCEPCIÓN 2: Destacados y Acentos con colores oscuros de alto contraste */
+  .cert-printable-card .text-amber-400,
+  .cert-printable-card .text-amber-500,
+  .cert-printable-card .text-amber-300,
+  .cert-signatures-sheet .text-amber-400,
+  .cert-signatures-sheet .text-amber-500 {
+    color: #92400e !important;
+    -webkit-text-fill-color: #92400e !important;
+    font-weight: 800 !important;
+  }
+
+  .cert-printable-card .text-emerald-400,
+  .cert-printable-card .text-emerald-500,
+  .cert-signatures-sheet .text-emerald-400 {
+    color: #047857 !important;
+    -webkit-text-fill-color: #047857 !important;
+    font-weight: 800 !important;
+  }
+
+  .cert-printable-card .text-red-400,
+  .cert-printable-card .text-red-500,
+  .cert-signatures-sheet .text-red-400 {
+    color: #b91c1c !important;
+    -webkit-text-fill-color: #b91c1c !important;
+    font-weight: 800 !important;
+  }
+
+  /* EXCEPCIÓN 3: Círculo del Score en Impresión */
+  .cert-score-circle {
+    background-color: #fffbeb !important;
+    background: #fffbeb !important;
+    border: 3.5px solid #d97706 !important;
+    border-radius: 9999px !important;
+    width: 85px !important;
+    height: 85px !important;
+    min-width: 85px !important;
+    min-height: 85px !important;
+  }
+  .cert-score-circle,
+  .cert-score-circle * {
+    color: #78350f !important;
+    -webkit-text-fill-color: #78350f !important;
+    font-weight: 900 !important;
+  }
+
+  /* Timeline de Mantenimientos */
+  .cert-timeline-item {
+    border-left: 4px solid #d97706 !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 8px !important;
+    padding: 8px 10px !important;
+  }
+
+  /* Encabezado Oficial exclusivo para impresión */
+  .print-only-header {
+    display: block !important;
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Ocultar marcas de agua tenues */
+  .watermark-digital,
+  .pointer-events-none.select-none {
+    display: none !important;
+  }
+
+  /* Salto de página para Hoja 1 y Hoja 2 */
   .cert-page-1 {
     page-break-before: avoid !important;
     break-before: avoid !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     height: auto !important;
-    max-height: 270mm !important;
-    margin: 0 !important;
-    overflow: visible !important;
   }
 
-  /* Solo en Certificado Completo VIP se fuerza el salto a la Hoja 2 */
   .cert-page-break-after {
     page-break-after: always !important;
     break-after: page !important;
@@ -255,19 +375,13 @@ body {
     break-after: auto !important;
   }
 
-  /* HOJA 2: Comienza en Página 2 limpiamente (sin break-before redundante que crearía hoja vacía) */
   .cert-page-2 {
     page-break-before: auto !important;
     break-before: auto !important;
     page-break-inside: auto !important;
     break-inside: auto !important;
-    margin-top: 0 !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
   }
 
-  /* Mostrar la lista completa de mantenimientos sin límite de altura ni corte */
   .cert-history-list,
   .cert-history-list * {
     max-height: none !important;
@@ -275,177 +389,20 @@ body {
     overflow: visible !important;
   }
 
-  .cert-history-list {
-    display: block !important;
-  }
-
-  /* Cada registro de mantenimiento no debe cortarse por la mitad */
-  .cert-timeline-item {
-    background: #ffffff !important;
-    border-left: 3.5px solid #d97706 !important;
-    border-top: 1px solid #cbd5e1 !important;
-    border-right: 1px solid #cbd5e1 !important;
-    border-bottom: 1px solid #cbd5e1 !important;
-    border-radius: 0 8px 8px 0 !important;
-    color: #0f172a !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-    margin-bottom: 8px !important;
-    padding: 8px 10px !important;
-    box-shadow: none !important;
-  }
-
-  .cert-work-desc {
-    background: #f8fafc !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
-    color: #1e293b !important;
-    padding: 6px 8px !important;
-    font-size: 10.5px !important;
-    line-height: 1.35 !important;
-    margin: 4px 0 !important;
-  }
-
-  .cert-workshop-box {
-    background: #f1f5f9 !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 6px !important;
-    color: #0f172a !important;
-    padding: 6px 8px !important;
-  }
-
-  .cert-workshop-box span,
-  .cert-workshop-box strong,
-  .cert-workshop-box div {
-    color: #0f172a !important;
-  }
-
-  /* Anular fondos oscuros que provocan texto ilegible en descargas */
-  .cert-printable-card [class*="bg-black"],
-  .cert-printable-card [class*="bg-slate-"],
-  .cert-printable-card [class*="bg-[#"],
-  .cert-printable-card [class*="from-"],
-  .cert-printable-card [class*="to-"],
-  .cert-printable-card [class*="bg-gradient-"] {
-    background: transparent !important;
-    background-image: none !important;
-  }
-
-  /* Textos de alta legibilidad y contraste en impresión */
-  .cert-printable-card .text-white, 
-  .cert-printable-card h1, 
-  .cert-printable-card h2, 
-  .cert-printable-card h3, 
-  .cert-printable-card h4, 
-  .cert-printable-card h5, 
-  .cert-printable-card h6, 
-  .cert-printable-card strong, 
-  .cert-printable-card b {
-    color: #0f172a !important;
-    text-shadow: none !important;
-  }
-  .cert-printable-card .text-slate-100, 
-  .cert-printable-card .text-slate-200, 
-  .cert-printable-card .text-slate-300 {
-    color: #1e293b !important;
-  }
-  .cert-printable-card .text-slate-400, 
-  .cert-printable-card .text-slate-500, 
-  .cert-printable-card .text-slate-600 {
-    color: #475569 !important;
-  }
-
-  /* Bloques interiores de datos del vehículo */
-  .cert-data-box {
-    background: #f8fafc !important;
-    border: 1.5px solid #0f172a !important;
-    border-radius: 10px !important;
-    padding: 12px !important;
-    margin-bottom: 12px !important;
-    color: #0f172a !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
-  /* Placa del vehículo en impresión (estilo chapa real de alto contraste) */
-  .cert-placa-badge {
-    background: #0f172a !important;
-    color: #ffffff !important;
-    border: 2px solid #000000 !important;
-    padding: 3px 10px !important;
-    border-radius: 6px !important;
-    font-weight: 900 !important;
-    display: inline-block !important;
-    letter-spacing: 0.1em !important;
-  }
-
-  .cert-placa-badge span,
-  .cert-placa-badge strong {
-    color: #ffffff !important;
-  }
-
-  /* Círculo del Score en impresión */
-  .cert-score-circle {
-    background: #fffbeb !important;
-    border: 3.5px solid #d97706 !important;
-    border-radius: 9999px !important;
-    color: #92400e !important;
-    box-shadow: none !important;
-    width: 90px !important;
-    height: 90px !important;
-    min-width: 90px !important;
-    min-height: 90px !important;
-  }
-
-  .cert-score-circle span {
-    color: #92400e !important;
-  }
-
-  /* Badges de estado en impresión */
-  .cert-tag-salud {
-    color: #0f172a !important;
-    font-weight: 800 !important;
-    border: 1px solid #cbd5e1 !important;
-    background: #f1f5f9 !important;
-    padding: 2px 8px !important;
-    border-radius: 6px !important;
-    display: inline-block !important;
-  }
-
-  /* Bloque QR en el certificado para verificación o firma */
-  .cert-qr-container {
-    background: #f8fafc !important;
-    border: 1.5px solid #0f172a !important;
-    border-radius: 10px !important;
-    padding: 10px !important;
-    color: #0f172a !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
-  }
-
+  /* QR y Gráficos */
   .cert-qr-img {
     width: 58px !important;
     height: 58px !important;
-    min-width: 58px !important;
-    min-height: 58px !important;
-    max-width: 65px !important;
-    max-height: 65px !important;
     display: block !important;
     object-fit: contain !important;
     margin: 0 auto !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
   }
 
-  /* Imágenes y QR con contraste perfecto */
   img {
     filter: contrast(130%) !important;
     max-width: 100% !important;
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
   }
 
-  /* Forzar preservación de colores e impresiones nítidas */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

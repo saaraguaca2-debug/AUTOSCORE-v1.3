@@ -90,8 +90,8 @@ export default function UsuarioView({ appScriptUrl, initialMode = "login" }: Usu
     const cleanPlaca = selectedCar?.placa ? selectedCar.placa.replace(/[^A-Za-z0-9]/g, "") : "AUTO";
     const cleanDoc = tipo === "certificado" ? "Certificado_AutoScore" : "Registros_Firmas_AutoScore";
     
-    // Asigna el nombre de archivo con extensión .pdf para que el navegador lo guarde en formato PDF
-    document.title = `${cleanDoc}_${cleanPlaca}.pdf`;
+    // Asigna el nombre de documento oficial para que el navegador móvil lo guarde con extensión .pdf nativa
+    document.title = `${cleanDoc}_${cleanPlaca}`;
 
     setTimeout(() => {
       window.print();
