@@ -199,63 +199,60 @@ body {
     transform: none !important;
   }
 
-  /* REGLA MAESTRA DE IMPRESIÓN PARA NAVEGADORES MÓVILES (Android / iOS):
-     Forzar que TODOS los elementos de texto (span, p, div, h1-h6, td, th, strong, small, label, b, a)
-     en las tarjetas imprimibles tengan color oscuro sólido (#0f172a), anulando text-transparent o letras blancas */
+  /* CONTENEDOR PRINCIPAL IMPRIMIBLE: Fondo blanco sólido garantizado para el visor interno de WhatsApp */
   .cert-printable-card,
-  .cert-printable-card *,
   .cert-signatures-sheet,
+  .cert-page-1,
+  .cert-page-2 {
+    background-color: #ffffff !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    border: 2px solid #0f172a !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    margin: 0 0 12px 0 !important;
+    box-sizing: border-box !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    opacity: 1 !important;
+  }
+
+  /* REGLA MAESTRA DE TEXTO SÓLIDO PARA WHATSAPP Y NAVEGADORES MÓVILES:
+     Forzar que TODOS los elementos de texto (span, p, div, h1-h6, td, th, strong, small, label, b, a)
+     tengan color negro estándar (#000000) anulando text-transparent y clases claras */
+  .cert-printable-card *,
   .cert-signatures-sheet *,
-  .cert-data-box,
   .cert-data-box *,
-  .cert-timeline-item,
   .cert-timeline-item *,
-  .cert-workshop-box,
   .cert-workshop-box *,
-  .cert-qr-container,
   .cert-qr-container * {
-    color: #0f172a !important;
-    -webkit-text-fill-color: #0f172a !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
     text-shadow: none !important;
     opacity: 1 !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
 
-  /* Anular fondos oscuros/gradientes y transparentar contenedores para papel blanco */
-  .cert-printable-card,
-  .cert-signatures-sheet,
-  .glass-panel,
-  .glass-panel-vip,
-  .cert-data-box,
-  .cert-timeline-item,
-  .cert-workshop-box,
-  .cert-qr-container,
-  [class*="bg-black"],
-  [class*="bg-slate-"],
-  [class*="bg-[#"],
-  [class*="from-"],
-  [class*="to-"],
-  [class*="bg-gradient-"] {
+  /* Anular fondos oscuros/gradientes interiores y sustituirlos por fondo claro */
+  .cert-printable-card [class*="bg-black"],
+  .cert-printable-card [class*="bg-slate-"],
+  .cert-printable-card [class*="bg-[#"],
+  .cert-printable-card [class*="from-"],
+  .cert-printable-card [class*="to-"],
+  .cert-printable-card [class*="bg-gradient-"],
+  .cert-signatures-sheet [class*="bg-black"],
+  .cert-signatures-sheet [class*="bg-slate-"],
+  .cert-signatures-sheet [class*="bg-[#"],
+  .cert-signatures-sheet [class*="from-"],
+  .cert-signatures-sheet [class*="to-"],
+  .cert-signatures-sheet [class*="bg-gradient-"] {
     background-color: transparent !important;
     background: transparent !important;
     background-image: none !important;
     box-shadow: none !important;
-  }
-
-  /* Borde contenedor oficial de las tarjetas en impresión */
-  .cert-printable-card,
-  .cert-signatures-sheet {
-    background-color: #ffffff !important;
-    background: #ffffff !important;
-    border: 2px solid #0f172a !important;
-    border-radius: 12px !important;
-    padding: 14px 16px !important;
-    margin: 0 0 12px 0 !important;
-    box-sizing: border-box !important;
-    overflow: visible !important;
-    display: block !important;
-    width: 100% !important;
   }
 
   /* Cajas interiores de datos con fondo gris muy claro para contraste limpio */
