@@ -159,12 +159,14 @@ body {
     display: none !important;
   }
 
-  /* Resetear lienzo del documento para fondo blanco puro e inicio inmediato en Página 1 */
-  html, body, #root {
+  /* Resetear lienzo del documento para fondo blanco puro con color-scheme claro para el lector PDF del navegador */
+  :root, html, body, #root {
+    color-scheme: light !important;
     background-color: #ffffff !important;
     background: #ffffff !important;
     background-image: none !important;
-    color: #0f172a !important;
+    color: #000000 !important;
+    -webkit-text-fill-color: #000000 !important;
     width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
@@ -199,11 +201,12 @@ body {
     transform: none !important;
   }
 
-  /* CONTENEDOR PRINCIPAL IMPRIMIBLE: Fondo blanco sólido garantizado para el visor interno de WhatsApp */
+  /* CONTENEDOR PRINCIPAL IMPRIMIBLE: Fondo blanco sólido garantizado para el visor del navegador */
   .cert-printable-card,
   .cert-signatures-sheet,
   .cert-page-1,
   .cert-page-2 {
+    color-scheme: light !important;
     background-color: #ffffff !important;
     background: #ffffff !important;
     background-image: none !important;
